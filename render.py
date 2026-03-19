@@ -87,44 +87,74 @@ def generate_html(data: dict) -> str:
     report_date = data["report_date"]
     alert_items = data.get("alert_items", [])
 
-    # ── 燈號 ─────────────────────────────────────────────────
-    sig_market = "red"    if (m["loss_over"] or m["d3_over"]) else \
-                 "yellow" if (m["loss_warn"] or m["d3_warn"]) else "green"
-    # 財管燈號：達L1/達L2 皆為黃燈，無紅燈
-    _wm_alert_st = ("達L1","達L2","L1 80%","L1 80%提醒","接近L1","80%提醒")
-    sig_wm     = "yellow" if any(v.get("status") in _wm_alert_st for v in wm["conc"].values()) else "green"
+    # ── 計數卡：全部從 Sheet1 m_pct/y_pct 計算（與圓圈同源）──
+    _all_pnl_rows = m.get("ib_rows",[]) + m.get("strategy_rows",[]) + m.get("trade_rows",[])
+    loss_over_cnt = sum(1 for r in _all_pnl_rows if float(r.get("m_pct") or 0) >= 1.0)
+    loss_warn_cnt = sum(1 for r in _all_pnl_rows if 0.8 <= float(r.get("m_pct") or 0) < 1.0)
+    y_over_cnt    = sum(1 for r in _all_pnl_rows if float(r.get("y_pct") or 0) >= 1.0)
+    y_warn_cnt    = sum(1 for r in _all_pnl_rows if 0.8 <= float(r.get("y_pct") or 0) < 1.0)
+    d3_over_cnt   = len(m["d3_over"])
+    d3_warn_cnt   = len(m["d3_warn"])
 
-    sig_txt = {"red":("⚠ 超限","var(--red)"), "yellow":("！警示","#b45309"), "green":("✓ 正常","var(--grn)")}
+    # ── 燈號 ─────────────────────────────────────────────────
+    # 自營：超限→紅、80%提醒→橙、正常→綠（與計數卡同源）
+    sig_market = "red"    if loss_over_cnt or y_over_cnt or m["d3_over"] else \
+                 "orange" if loss_warn_cnt or y_warn_cnt or m["d3_warn"] else "green"
+    # 財管：只有達L1/達L2才顯示警示（橙），其餘正常
+    sig_wm = "orange" if any(v.get("status") in ("達L1","達L2") for v in wm["conc"].values()) else "green"
+    # 經紀：整體維持率 < 160% → 橙燈
+    _broker_maint = float(b.get("total_maint", 0) or 0)
+    sig_broker = "orange" if _broker_maint > 0 and _broker_maint < 160 else "green"
+
+    sig_txt = {
+        "red":    ("⚠ 超限",  "var(--red)"),
+        "orange": ("！警示",  "var(--org)"),
+        "yellow": ("！警示",  "#b45309"),
+        "green":  ("✓ 正常", "var(--grn)"),
+    }
     sm_txt, sm_col = sig_txt[sig_market]
     sw_txt, sw_col = sig_txt[sig_wm]
+    sb_txt, sb_col = sig_txt[sig_broker]
 
-    sm_sub = f"損失超限{len(m['loss_over'])}件 | 單檔損失超限{len(m['d3_over'])}件" if sig_market=="red" else \
-             f"損失警示{len(m['loss_warn'])}件 | 單檔損失警示{len(m['d3_warn'])}件" if sig_market=="yellow" else "各項指標正常"
-    sw_sub = next((f"{v.get('name','')} 達L1" for v in wm["conc"].values() if v.get("status")=="達L1"), "各集中度正常")
-    sb_sub = f"融資維持率{b.get('total_maint',0):.1f}% " #| ABC合計{_pct(b.get('abc_pct'))}
+    sm_sub = f"損失超限{loss_over_cnt + y_over_cnt}件 | 單檔損失超限{len(m['d3_over'])}件" if sig_market=="red" else \
+             f"損失80%提醒{loss_warn_cnt + y_warn_cnt}件 | 單檔損失提醒{len(m['d3_warn'])}件" if sig_market=="orange" else "各項指標正常"
+    sw_sub = next(
+        (f"{v.get('name','')} {v.get('status','')}" for v in wm["conc"].values()
+         if v.get("status") in ("達L1","達L2")),
+        "各集中度正常"
+    )
+    sb_sub = f"融資維持率 {_broker_maint:.1f}%" + (" ⚠ 低於160%" if sig_broker=="orange" else "")
 
-    # ── 今日重點 ─────────────────────────────────────────────
+    # ── 今日重點（直接從 m_pct/y_pct 產生，月/年都涵蓋）────────
     ai_html = ""
-    for ai in alert_items:
-        icon = {"red":"🔴","yellow":"🟡","blue":"🔵"}.get(ai["type"],"🔵")
-        cls  = {"red":"r","yellow":"y","blue":"b"}.get(ai["type"],"b")
-        ai_html += f'<div class="ai {cls}">{icon} {ai["text"]}</div>\n'
+    for r in _all_pnl_rows:
+        mp = float(r.get("m_pct") or 0)
+        yp = float(r.get("y_pct") or 0)
+        dept = r.get("dept", "")
+        if mp >= 1.0:
+            ai_html += f'<div class="ai r">🔴 自營 {dept} 月損失超限（{mp*100:.1f}%）</div>\n'
+        elif mp >= 0.8:
+            ai_html += f'<div class="ai o">🟠 自營 {dept} 月損失80%提醒（{mp*100:.1f}%）</div>\n'
+        if yp >= 1.0:
+            ai_html += f'<div class="ai r">🔴 自營 {dept} 年損失超限（{yp*100:.1f}%）</div>\n'
+        elif yp >= 0.8:
+            ai_html += f'<div class="ai o">🟠 自營 {dept} 年損失80%提醒（{yp*100:.1f}%）</div>\n'
+    for r in m.get("d3_over", []):
+        ai_html += f'<div class="ai r">🔴 單檔損失超限 {r["code"]} {r["name"]}（{r["loss_rate"]*100:.1f}%）</div>\n'
+    for r in m.get("d3_warn", []):
+        ai_html += f'<div class="ai o">🟠 單檔損失80%提醒 {r["code"]} {r["name"]}（{r["loss_rate"]*100:.1f}%）</div>\n'
+    # 財管達L1/L2
+    for k, v in wm.get("conc", {}).items():
+        if v.get("status") in ("達L1", "達L2"):
+            ai_html += f'<div class="ai o">🟠 財管 {v.get("name","")} {v.get("status","")}（{(v.get("pct") or 0)*100:.2f}%）</div>\n'
     if not ai_html:
         ai_html = '<div class="ai g">✅ 今日各項指標正常</div>'
 
-    # ── 損失狀態圓圈（月/年 × 超限/警示）────────────────────
+    # ── 損失狀態圓圈（Sheet1 col O/P m_pct/y_pct 為唯一來源）──
     def _loss_badge(m_pct, y_pct):
-        """
-        依月損失/年損失使用率組合顯示圓圈
-        正常 → 綠點
-        月超限 → 紅框月字  月警示 → 黃框月字
-        年超限 → 紅框年字  年警示 → 黃框年字
-        多個狀態 → 並排顯示
-        """
         mp = float(m_pct or 0)
         yp = float(y_pct or 0)
         parts = []
-        # 月損失
         if mp >= 1.0:
             parts.append('<span style="display:inline-flex;align-items:center;justify-content:center;'
                          'width:20px;height:20px;border-radius:50%;border:2px solid #c62828;'
@@ -133,7 +163,6 @@ def generate_html(data: dict) -> str:
             parts.append('<span style="display:inline-flex;align-items:center;justify-content:center;'
                          'width:20px;height:20px;border-radius:50%;border:2px solid #ea580c;'
                          'color:#ea580c;font-size:10px;font-weight:700;font-family:var(--sans);">月</span>')
-        # 年損失
         if yp >= 1.0:
             parts.append('<span style="display:inline-flex;align-items:center;justify-content:center;'
                          'width:20px;height:20px;border-radius:50%;border:2px solid #c62828;'
@@ -142,7 +171,6 @@ def generate_html(data: dict) -> str:
             parts.append('<span style="display:inline-flex;align-items:center;justify-content:center;'
                          'width:20px;height:20px;border-radius:50%;border:2px solid #ea580c;'
                          'color:#ea580c;font-size:10px;font-weight:700;font-family:var(--sans);">年</span>')
-        # 都正常 → 綠點
         if not parts:
             return '<span style="color:#1a9e6a;font-size:16px;line-height:1;">●</span>'
         return '<span style="display:inline-flex;gap:3px;align-items:center;">' + ''.join(parts) + '</span>'
@@ -154,34 +182,34 @@ def generate_html(data: dict) -> str:
         yp = float(r.get("y_pct") or 0)
         return f"""<tr class="{row_cls}">
           <td class="l" {ns}>{r['dept']}</td>
-          <td class="r {_updn(r['mtd'])}">{_wan(r['mtd'])}</td>
-          <td class="r {_updn(r['ytd'])}">{_wan(r['ytd'])}</td>
-          <td class="r" style="text-align:center;">{_loss_badge(mp, yp)}</td>
+          <td style="text-align:center;" class="{_updn(r['mtd'])}">{_wan(r['mtd'])}</td>
+          <td style="text-align:center;" class="{_updn(r['ytd'])}">{_wan(r['ytd'])}</td>
+          <td style="text-align:center;">{_loss_badge(mp, yp)}</td>
         </tr>"""
 
     def _total_row(r, cls="subtotal"):
         accent = "style='color:var(--acc);'" if cls=="grand" else ""
         return f"""<tr class="{cls}">
           <td class="l" {accent}>{r['dept']}</td>
-          <td class="r {_updn(r['mtd'])}">{_wan(r['mtd'])}</td>
-          <td class="r {_updn(r['ytd'])}">{_wan(r['ytd'])}</td>
-          <td class="r">—</td>
+          <td style="text-align:center;" class="{_updn(r['mtd'])}">{_wan(r['mtd'])}</td>
+          <td style="text-align:center;" class="{_updn(r['ytd'])}">{_wan(r['ytd'])}</td>
+          <td style="text-align:center;">—</td>
         </tr>"""
 
     COL_GRP = """<colgroup>
-      <col style="width:52%"><col style="width:18%"><col style="width:18%"><col style="width:12%">
+      <col style="width:38%"><col style="width:22%"><col style="width:22%"><col style="width:18%">
     </colgroup>"""
     TBL_HDR = """<thead><tr>
-      <th>部門 / 業務</th><th class="r">MTD</th><th class="r">YTD</th><th class="r">狀態</th>
+      <th>部門 / 業務</th><th style="text-align:center;">月損益</th><th style="text-align:center;">年損益</th><th style="text-align:center;">狀態</th>
     </tr></thead>"""
     STR_HDR = """<thead><tr>
-      <th>部門</th><th class="r">MTD</th><th class="r">YTD</th><th class="r">狀態</th>
+      <th>部門</th><th style="text-align:center;">月損益</th><th style="text-align:center;">年損益</th><th style="text-align:center;">狀態</th>
     </tr></thead>"""
 
     def _ib_row(r):
         mp = float(r.get("m_pct") or 0)
         yp = float(r.get("y_pct") or 0)
-        rc = "alert-row" if (r.get("status") in ("超限","月損失超限") or mp >= 1.0 or yp >= 1.0) else ""
+        rc = "alert-row" if mp >= 1.0 or yp >= 1.0 else ""
         return _pnl_row(r, rc)
     ib_rows    = "".join(_ib_row(r) for r in m["ib_rows"]) + _total_row(m["ib_total"], "grand")
     strat_rows = "".join(_pnl_row(r) for r in m["strategy_rows"]) + _total_row(m["strategy_total"])
@@ -189,29 +217,14 @@ def generate_html(data: dict) -> str:
     for r in m["trade_rows"]:
         mp = float(r.get("m_pct") or 0)
         yp = float(r.get("y_pct") or 0)
-        rc = "alert-row" if (r.get("status") in ("超限","月損失超限") or mp >= 1.0 or yp >= 1.0) else ""
+        rc = "alert-row" if mp >= 1.0 or yp >= 1.0 else ""
         trade_rows += _pnl_row(r, rc)
     trade_rows += _total_row(m["trade_total"]) + _total_row(m["ft_total"], "grand")
 
     ft_badge = _badge('超限') if any(
-        r.get("status") in ("超限","月損失超限") or
-        float(r.get("m_pct") or 0) >= 1.0 or
-        float(r.get("y_pct") or 0) >= 1.0
+        float(r.get("m_pct") or 0) >= 1.0 or float(r.get("y_pct") or 0) >= 1.0
         for r in m["trade_rows"]
     ) else _badge('正常')
-
-    # ── 損失超限 bars（四類：月超限/年超限/月80%/年80%）────────
-    m_loss_over = m.get("m_loss_over", [])
-    m_loss_warn = m.get("m_loss_warn", [])
-    y_loss_over = m.get("y_loss_over", [])
-    y_loss_warn = m.get("y_loss_warn", [])
-
-    loss_over_cnt = len(m_loss_over)
-    loss_warn_cnt = len(m_loss_warn)
-    y_over_cnt    = len(y_loss_over)
-    y_warn_cnt    = len(y_loss_warn)
-    d3_over_cnt   = len(m["d3_over"])
-    d3_warn_cnt   = len(m["d3_warn"])
 
     def _loss_bar(r, pct_key, label, is_over):
         pv   = float(r.get(pct_key) or 0) * 100
@@ -222,7 +235,9 @@ def generate_html(data: dict) -> str:
             bg, bd, fc = "var(--orgbg)", "var(--orgbd)", "var(--org)"
         badge_st = ("超限" if pct_key == "m_pct" else "超限") if is_over else "80%提醒"
         return f"""<div class="lrow" style="background:{bg};border-color:{bd};">
-          <div style="flex:1;"><div style="font-size:14px;font-weight:700;color:{fc};">{r['dept']} {r['biz']}</div>
+          <div style="display:flex;align-items:center;gap:8px;min-width:260px;">
+            <div style="font-size:14px;font-weight:700;color:{fc};">{r['dept']} {r['biz']}</div>
+
           <div style="font-size:12px;color:var(--mid);font-family:var(--mono);margin-top:2px;">{label}</div></div>
           <div style="display:flex;align-items:center;gap:7px;flex:1;">
             <div class="pbar"><div class="pbar-fill" style="width:{fill:.0f}%;background:{fc};"></div></div>
@@ -230,14 +245,23 @@ def generate_html(data: dict) -> str:
           </div>{_badge(badge_st)}</div>"""
 
     loss_bars = ""
-    for r in m_loss_over:
-        loss_bars += _loss_bar(r, "m_pct", "月損失使用率", True)
-    for r in y_loss_over:
-        loss_bars += _loss_bar(r, "y_pct", "年損失使用率", True)
-    for r in m_loss_warn:
-        loss_bars += _loss_bar(r, "m_pct", "月損失使用率", False)
-    for r in y_loss_warn:
-        loss_bars += _loss_bar(r, "y_pct", "年損失使用率", False)
+    m_loss_over = m.get("m_loss_over", [])
+    y_loss_over = m.get("y_loss_over", [])
+    m_loss_warn = m.get("m_loss_warn", [])
+    y_loss_warn = m.get("y_loss_warn", [])
+    # 改從 _all_pnl_rows（Sheet1 m_pct/y_pct）產生，與計數卡同源
+    for r in _all_pnl_rows:
+        mp = float(r.get("m_pct") or 0)
+        yp = float(r.get("y_pct") or 0)
+        fake = {"dept": r.get("dept",""), "biz": "", "m_pct": mp, "y_pct": yp}
+        if mp >= 1.0:
+            loss_bars += _loss_bar(fake, "m_pct", "月損失使用率", True)
+        elif mp >= 0.8:
+            loss_bars += _loss_bar(fake, "m_pct", "月損失使用率", False)
+        if yp >= 1.0:
+            loss_bars += _loss_bar(fake, "y_pct", "年損失使用率", True)
+        elif yp >= 0.8:
+            loss_bars += _loss_bar(fake, "y_pct", "年損失使用率", False)
 
     # ── D3 ───────────────────────────────────────────────────
     # d3：只顯示超限/80%提醒，觀察不顯示
@@ -304,7 +328,7 @@ def generate_html(data: dict) -> str:
     wm_fund_amt   = wm_total_mn * fund_pct   / 100 / 100
     wm_struct_amt = wm_total_mn * struct_pct / 100 / 100
 
-    # ── 財管警示明細（只顯示達L1/L2/80%提醒/L1 80%）──────────
+    # ── 財管警示明細（第一頁只顯示達L1/達L2）────────────────
     cat_labels_map = {
         "bond_inv":      "債券｜投資等級",
         "bond_noninv":   "債券｜非投資等級",
@@ -317,18 +341,13 @@ def generate_html(data: dict) -> str:
     for k, label in cat_labels_map.items():
         v = conc.get(k, {})
         st = v.get("status","正常")
-        if st in ("達L1","達L2","L1 80%","L1 80%提醒","接近L1","80%提醒"):
-            pct_val = (v.get("pct") or 0)
-            l1_val  = (v.get("l1") or 0)
-            fill    = min(pct_val/l1_val,1.0)*100 if l1_val else 0
-            # 依狀態給顏色（與 _badge 一致）
-            if st in ("達L2",):
-                color, row_cls = "#c62828", "wr"   # 紅
-            elif st in ("達L1",):
-                color, row_cls = "#f97316", "wy"   # 橙
-            else:
-                color, row_cls = "#f59e0b", "wy"   # 黃（L1 80%提醒等）
-            wm_alert_rows += f"""<div class="conc-row {row_cls}" style="margin-bottom:4px;">
+        if st not in ("達L1","達L2"):   # 第一頁只揭露 L1/L2，80%提醒不顯示
+            continue
+        pct_val = (v.get("pct") or 0)
+        l1_val  = (v.get("l1") or 0)
+        fill    = min(pct_val/l1_val,1.0)*100 if l1_val else 0
+        color, row_cls = ("#c62828","wr") if st=="達L2" else ("#f97316","wy")
+        wm_alert_rows += f"""<div class="conc-row {row_cls}" style="margin-bottom:4px;">
               <div class="conc-cat">{label}</div>
               <div class="conc-name" style="color:{color};">{v.get('name','')}</div>
               <div><div class="mini-bar"><div class="mini-fill" style="width:{fill:.0f}%;background:{color};"></div></div>
@@ -357,20 +376,22 @@ def generate_html(data: dict) -> str:
     de_maint   = sum(r["maint"] * r["balance"] for r in _de) / de_bal_sum if de_bal_sum > 0 else 0
 
     dist_html = f"""
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px;">
-      <div style="background:var(--gnbg);border:1px solid var(--gnbd);border-radius:8px;padding:12px 14px;">
-        <div style="font-size:14px;font-weight:700;color:var(--grn);font-family:var(--mono);margin-bottom:8px;">A～C 級</div>
-        <div style="font-size:14px;font-weight:800;font-family:var(--mono);color:var(--grn);">{_pct(abc_pct_sum)}</div>
-        <div style="font-size:14px;color:var(--mid);font-family:var(--mono);margin-top:4px;">融資餘額　{_wan(abc_bal_sum)}</div>
-        <div style="font-size:14px;color:var(--mid);font-family:var(--mono);margin-top:2px;">維持率　{abc_maint:.1f}%
-        <!-- 維持率為各等級加權平均，若需精確值請確認資料來源 --></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+      <div style="background:var(--gnbg);border:1px solid var(--gnbd);border-radius:8px;padding:6px 14px;">
+        <div style="display:flex;align-items:baseline;gap:12px;">
+          <div style="font-size:14px;font-weight:700;color:var(--grn);font-family:var(--mono);">A～C 級</div>
+          <div style="font-size:14px;font-weight:700;color:var(--grn);font-family:var(--mono);">{_pct(abc_pct_sum)}</div>
+        </div>
+        <div style="font-size:13px;color:var(--mid);font-family:var(--mono);margin-top:2px;">融資餘額　{_wan(abc_bal_sum)}</div>
+        <div style="font-size:13px;color:var(--mid);font-family:var(--mono);margin-top:1px;">維持率　{abc_maint:.1f}%</div>
       </div>
-      <div style="background:var(--yelbg);border:1px solid var(--yelbd);border-radius:8px;padding:12px 14px;">
-        <div style="font-size:14px;font-weight:700;color:var(--yel);font-family:var(--mono);margin-bottom:8px;">D～E 級</div>
-        <div style="font-size:14px;font-weight:800;font-family:var(--mono);color:var(--yel);">{_pct(de_pct_sum)}</div>
-        <div style="font-size:14px;color:var(--mid);font-family:var(--mono);margin-top:4px;">融資餘額　{_wan(de_bal_sum)}</div>
-        <div style="font-size:14px;color:var(--mid);font-family:var(--mono);margin-top:2px;">維持率　{de_maint:.1f}%
-        <!-- 維持率為各等級加權平均，若需精確值請確認資料來源 --></div>
+      <div style="background:var(--yelbg);border:1px solid var(--yelbd);border-radius:8px;padding:6px 14px;">
+        <div style="display:flex;align-items:baseline;gap:12px;">
+          <div style="font-size:14px;font-weight:700;color:var(--yel);font-family:var(--mono);">D～E 級</div>
+          <div style="font-size:14px;font-weight:700;color:var(--yel);font-family:var(--mono);">{_pct(de_pct_sum)}</div>
+        </div>
+        <div style="font-size:13px;color:var(--mid);font-family:var(--mono);margin-top:2px;">融資餘額　{_wan(de_bal_sum)}</div>
+        <div style="font-size:13px;color:var(--mid);font-family:var(--mono);margin-top:1px;">維持率　{de_maint:.1f}%</div>
       </div>
     </div>"""
 
@@ -424,10 +445,12 @@ def generate_html(data: dict) -> str:
   --mono:'IBM Plex Mono',monospace;--sans:system-ui,sans-serif;
 }}
 *,*::before,*::after{{box-sizing:border-box;margin:0;padding:0;}}
-body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14px;line-height:1.5;}}
+body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14px;line-height:1.5;
+  -webkit-print-color-adjust:exact;print-color-adjust:exact;}}
 @keyframes pulse{{0%,100%{{opacity:1}}50%{{opacity:.4}}}}
 @keyframes blink{{0%,100%{{opacity:1}}50%{{opacity:.25}}}}
 .page{{width:210mm;min-height:297mm;margin:0 auto 14px;background:var(--s1);padding:16px 14px 14px;box-shadow:0 2px 14px rgba(0,0,0,.1);}}
+.page-land{{width:297mm;min-height:210mm;margin:0 auto 14px;background:var(--s1);padding:16px 14px 14px;box-shadow:0 2px 14px rgba(0,0,0,.1);}}
 .hdr{{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid var(--acc);padding-bottom:10px;margin-bottom:14px;}}
 .logo{{width:30px;height:30px;border-radius:6px;background:linear-gradient(135deg,#1565c0,#1e88e5);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-weight:700;font-size:14px;color:#fff;flex-shrink:0;}}
 .pulse{{width:7px;height:7px;border-radius:50%;background:var(--grn);box-shadow:0 0 4px var(--grn);animation:pulse 2s infinite;}}
@@ -436,16 +459,17 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
 .alert-items{{display:flex;flex-wrap:wrap;gap:5px;}}
 .ai{{font-size:14px;padding:3px 10px;border-radius:4px;border:1px solid;}}
 .ai.r{{border-color:var(--redbd);color:var(--red);background:#fff;}}
+.ai.o{{border-color:var(--orgbd);color:var(--org);background:var(--orgbg);}}
 .ai.y{{border-color:var(--yelbd);color:var(--yel);background:var(--yelbg);}}
 .ai.b{{border-color:#c2d3f0;color:var(--acc2);background:#e8f0fb;}}
 .ai.g{{border-color:var(--gnbd);color:var(--grn);background:var(--gnbg);}}
 .sig-row{{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;}}
 .sig-card{{background:var(--s1);border:1px solid var(--bd);border-radius:9px;padding:14px 16px;display:flex;align-items:center;gap:10px;position:relative;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.05);}}
 .sig-card::after{{content:'';position:absolute;bottom:0;left:0;right:0;height:3px;}}
-.sig-card.red::after{{background:var(--red);}}.sig-card.yellow::after{{background:#f59e0b;}}.sig-card.green::after{{background:var(--grn);}}
+.sig-card.red::after{{background:var(--red);}}.sig-card.orange::after{{background:#ea580c;}}.sig-card.yellow::after{{background:#f59e0b;}}.sig-card.green::after{{background:var(--grn);}}
 .led{{width:11px;height:11px;border-radius:50%;flex-shrink:0;}}
 .led.red{{background:var(--red);box-shadow:0 0 6px rgba(198,40,40,.5);animation:blink 1.2s infinite;}}
-.led.yellow{{background:#f59e0b;}}.led.green{{background:var(--grn);}}
+.led.yellow{{background:#f59e0b;}}.led.orange{{background:#ea580c;box-shadow:0 0 5px rgba(234,88,12,.4);}}.led.green{{background:var(--grn);}}
 .sec-hd{{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid var(--acc);padding-bottom:8px;margin-bottom:14px;}}
 .sec-title{{font-size:14px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--mid);font-family:var(--mono);display:flex;align-items:center;gap:5px;}}
 .sec-title .n{{color:var(--acc2);font-size:14px;}}.sec-title .dept{{color:var(--acc);}}
@@ -454,6 +478,7 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
 .tbl th{{text-align:left;font-size:14px;font-family:var(--mono);color:var(--dim);padding:0 4px 6px;border-bottom:1.5px solid var(--bd);font-weight:600;letter-spacing:.03em;text-transform:uppercase;white-space:nowrap;}}
 .tbl th.r,.tbl td.r{{text-align:right;}}
 .tbl td{{padding:5px 4px;font-size:14px;border-bottom:1px solid var(--bd);font-family:var(--mono);word-break:break-all;}}
+.tbl td.r{{white-space:nowrap;}}
 .tbl td.l{{color:var(--mid);font-size:14px;font-family:var(--sans);}}
 .tbl tr:last-child td{{border-bottom:none;}}
 .tbl tr.subtotal td{{border-top:1px solid var(--bd2);background:var(--s2);font-weight:700;}}
@@ -495,10 +520,16 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
 .gA{{color:#1a9e6a;}}.gB{{color:var(--acc2);}}.gC{{color:#b45309;}}.gD{{color:#d97706;}}.gE{{color:var(--red);}}
 @media print{{
   body{{background:white;}}
-  .page,.page-land{{box-shadow:none;margin:0;page-break-after:always;}}
+  .page,.page-land{{box-shadow:none;margin:0;page-break-after:always;padding-top:8px;}}
   .page:last-child,.page-land:last-child{{page-break-after:auto;}}
   .page{{page:portrait;}}
   .page-land{{page:landscape;}}
+  .hdr{{padding-bottom:6px;margin-bottom:8px;}}
+  .alert-bar{{padding:6px 12px;margin-bottom:10px;}}
+  .sig-row{{gap:8px;margin-bottom:10px;}}
+  .sig-card{{padding:10px 14px;}}
+  .sd{{margin:6px 0 5px;}}
+  .cb{{padding:6px 9px;}}
   @page portrait{{size:A4 portrait;margin:8mm;}}
   @page landscape{{size:A4 landscape;margin:8mm;}}
 }}
@@ -547,37 +578,37 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
         <div style="font-size:12px;color:var(--dim);font-family:var(--mono);margin-top:2px;">{sw_sub}</div>
       </div>
     </div>
-    <div class="sig-card green">
-      <div class="led green"></div>
+    <div class="sig-card {sig_broker}">
+      <div class="led {sig_broker}"></div>
       <div>
         <div style="font-size:14px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);">經紀業務</div>
-        <div style="font-size:14px;font-weight:700;color:var(--grn);margin-top:2px;">✓ 正常</div>
+        <div style="font-size:14px;font-weight:700;color:{sb_col};margin-top:2px;">{sb_txt}</div>
         <div style="font-size:12px;color:var(--dim);font-family:var(--mono);margin-top:2px;">{sb_sub}</div>
       </div>
     </div>
   </div>
 
   <!-- ── 自營業務 ── -->
-  <div style="background:var(--s2);border:1px solid var(--bd);border-radius:8px;padding:10px 13px;margin-bottom:8px;">
+  <div style="background:var(--s2);border:1px solid var(--bd);border-radius:8px;padding:10px 13px;margin-bottom:8px;page-break-inside:avoid;">
     <div style="font-size:14px;font-weight:700;color:var(--acc);font-family:var(--mono);letter-spacing:.05em;text-transform:uppercase;margin-bottom:7px;">自營業務</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
       <div>
         <div class="sd" style="margin-top:0;">損失超限 / 警示</div>
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px;">
-          <div class="cb" style="background:var(--redbg);border:1px solid var(--redbd);min-width:80px;">
-            <div style="font-size:18px;font-weight:800;font-family:var(--mono);color:var(--red);">{loss_over_cnt}</div>
+          <div class="cb" style="background:var(--{'redbg' if loss_over_cnt else 'gnbg'});border:1px solid var(--{'redbd' if loss_over_cnt else 'gnbd'});min-width:80px;">
+            <div style="font-size:18px;font-weight:800;font-family:var(--mono);color:var(--{'red' if loss_over_cnt else 'grn'});">{loss_over_cnt}</div>
             <div style="font-size:12px;color:var(--mid);margin-top:1px;">月損失超限</div>
           </div>
-          <div class="cb" style="background:var(--{{'redbg' if y_over_cnt else 'gnbg'}});border:1px solid var(--{{'redbd' if y_over_cnt else 'gnbd'}});min-width:80px;">
-            <div style="font-size:18px;font-weight:800;font-family:var(--mono);color:var(--{{'red' if y_over_cnt else 'grn'}});">{y_over_cnt}</div>
+          <div class="cb" style="background:var(--{'redbg' if y_over_cnt else 'gnbg'});border:1px solid var(--{'redbd' if y_over_cnt else 'gnbd'});min-width:80px;">
+            <div style="font-size:18px;font-weight:800;font-family:var(--mono);color:var(--{'red' if y_over_cnt else 'grn'});">{y_over_cnt}</div>
             <div style="font-size:12px;color:var(--mid);margin-top:1px;">年損失超限</div>
           </div>
-          <div class="cb" style="background:var(--{{'orgbg' if loss_warn_cnt else 'gnbg'}});border:1px solid var(--{{'orgbd' if loss_warn_cnt else 'gnbd'}});min-width:80px;">
-            <div style="font-size:18px;font-weight:800;font-family:var(--mono);color:var(--{{'org' if loss_warn_cnt else 'grn'}});">{loss_warn_cnt}</div>
+          <div class="cb" style="background:var(--{'orgbg' if loss_warn_cnt else 'gnbg'});border:1px solid var(--{'orgbd' if loss_warn_cnt else 'gnbd'});min-width:80px;">
+            <div style="font-size:18px;font-weight:800;font-family:var(--mono);color:var(--{'org' if loss_warn_cnt else 'grn'});">{loss_warn_cnt}</div>
             <div style="font-size:12px;color:var(--mid);margin-top:1px;">月損失80%提醒</div>
           </div>
-          <div class="cb" style="background:var(--{{'orgbg' if y_warn_cnt else 'gnbg'}});border:1px solid var(--{{'orgbd' if y_warn_cnt else 'gnbd'}});min-width:80px;">
-            <div style="font-size:18px;font-weight:800;font-family:var(--mono);color:var(--{{'org' if y_warn_cnt else 'grn'}});">{y_warn_cnt}</div>
+          <div class="cb" style="background:var(--{'orgbg' if y_warn_cnt else 'gnbg'});border:1px solid var(--{'orgbd' if y_warn_cnt else 'gnbd'});min-width:80px;">
+            <div style="font-size:18px;font-weight:800;font-family:var(--mono);color:var(--{'org' if y_warn_cnt else 'grn'});">{y_warn_cnt}</div>
             <div style="font-size:12px;color:var(--mid);margin-top:1px;">年損失80%提醒</div>
           </div>
         </div>
@@ -586,12 +617,12 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
       <div>
         <div class="sd" style="margin-top:0;">單檔損失超限 / 警示</div>
         <div class="c-row">
-          <div class="cb" style="background:var(--redbg);border:1px solid var(--redbd);">
-            <div style="font-size:14px;font-weight:800;font-family:var(--mono);color:var(--red);">{d3_over_cnt}</div>
+          <div class="cb" style="background:var(--{'redbg' if d3_over_cnt else 'gnbg'});border:1px solid var(--{'redbd' if d3_over_cnt else 'gnbd'});">
+            <div style="font-size:14px;font-weight:800;font-family:var(--mono);color:var(--{'red' if d3_over_cnt else 'grn'});">{d3_over_cnt}</div>
             <div style="font-size:14px;color:var(--mid);margin-top:1px;">單檔超限</div>
           </div>
-          <div class="cb" style="background:var(--{{'yelbg' if d3_warn_cnt else 'gnbg'}});border:1px solid var(--{{'yelbd' if d3_warn_cnt else 'gnbd'}});">
-            <div style="font-size:14px;font-weight:800;font-family:var(--mono);color:var(--{{'yel' if d3_warn_cnt else 'grn'}});">{d3_warn_cnt}</div>
+          <div class="cb" style="background:var(--{'orgbg' if d3_warn_cnt else 'gnbg'});border:1px solid var(--{'orgbd' if d3_warn_cnt else 'gnbd'});">
+            <div style="font-size:14px;font-weight:800;font-family:var(--mono);color:var(--{'org' if d3_warn_cnt else 'grn'});">{d3_warn_cnt}</div>
             <div style="font-size:14px;color:var(--mid);margin-top:1px;">80%提醒</div>
           </div>
         </div>
@@ -600,46 +631,8 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
     </div>
   </div>
 
-  <!-- ── 財管商品業務 ── -->
-  <div style="background:var(--s2);border:1px solid var(--bd);border-radius:8px;padding:10px 13px;margin-bottom:8px;">
-    <div style="font-size:14px;font-weight:700;color:var(--acc);font-family:var(--mono);letter-spacing:.05em;text-transform:uppercase;margin-bottom:7px;">財管商品業務</div>
-    <div style="display:flex;height:9px;border-radius:4px;overflow:hidden;gap:2px;margin-bottom:8px;">
-      <div style="width:{bond_pct:.1f}%;background:#1565c0;border-radius:3px;"></div>
-      <div style="width:{fund_pct:.1f}%;background:#0097a7;border-radius:3px;"></div>
-      <div style="width:{struct_pct:.1f}%;background:#7c4dff;border-radius:3px;"></div>
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px;">
-      <div style="background:var(--s1);border:1px solid var(--bd);border-radius:6px;padding:7px 10px;display:flex;align-items:center;gap:7px;">
-        <div style="width:9px;height:9px;border-radius:2px;background:#1565c0;flex-shrink:0;"></div>
-        <div>
-          <div style="font-size:12px;color:var(--dim);font-family:var(--mono);">海外債券</div>
-          <div style="font-size:14px;font-weight:700;font-family:var(--mono);margin-top:1px;">{wm_bond_amt:.1f}億</div>
-          <div style="font-size:12px;color:var(--dim);font-family:var(--mono);">{bond_pct:.1f}%</div>
-        </div>
-      </div>
-      <div style="background:var(--s1);border:1px solid var(--bd);border-radius:6px;padding:7px 10px;display:flex;align-items:center;gap:7px;">
-        <div style="width:9px;height:9px;border-radius:2px;background:#0097a7;flex-shrink:0;"></div>
-        <div>
-          <div style="font-size:12px;color:var(--dim);font-family:var(--mono);">基金商品</div>
-          <div style="font-size:14px;font-weight:700;font-family:var(--mono);margin-top:1px;">{wm_fund_amt:.1f}億</div>
-          <div style="font-size:12px;color:var(--dim);font-family:var(--mono);">{fund_pct:.1f}%</div>
-        </div>
-      </div>
-      <div style="background:var(--s1);border:1px solid var(--bd);border-radius:6px;padding:7px 10px;display:flex;align-items:center;gap:7px;">
-        <div style="width:9px;height:9px;border-radius:2px;background:#7c4dff;flex-shrink:0;"></div>
-        <div>
-          <div style="font-size:12px;color:var(--dim);font-family:var(--mono);">結構型商品</div>
-          <div style="font-size:14px;font-weight:700;font-family:var(--mono);margin-top:1px;">{wm_struct_amt:.1f}億</div>
-          <div style="font-size:12px;color:var(--dim);font-family:var(--mono);">{struct_pct:.1f}%</div>
-        </div>
-      </div>
-    </div>
-    <div class="sd">達警示集中度明細</div>
-    {wm_alert_rows}
-  </div>
-
   <!-- ── 經紀業務 ── -->
-  <div style="background:var(--s2);border:1px solid var(--bd);border-radius:8px;padding:10px 13px;">
+  <div style="background:var(--s2);border:1px solid var(--bd);border-radius:8px;padding:10px 13px;margin-bottom:8px;page-break-inside:avoid;">
     <div style="font-size:14px;font-weight:700;color:var(--acc);font-family:var(--mono);letter-spacing:.05em;text-transform:uppercase;margin-bottom:7px;">經紀業務</div>
     <div class="sd" style="margin-top:0;">融資餘額 A～E 級分佈</div>
     {dist_html}
@@ -677,88 +670,124 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
     </div>
   </div>
 
-</div>
-
-<!-- ═══ 第二頁：01 自營業務損益 + 單檔損失 ═══ -->
-<div class="page-land">
-  <div class="sec-hd">
-    <div class="sec-title"><span class="n">01</span> <span class="dept">自營業務</span> — 損益概覽 {ft_badge}</div>
-    <div class="sec-date">截至 {m['data_date']}・單位：萬元</div>
-  </div>
-
-  <div class="sd" style="margin-top:0;">損失超限 / 警示</div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:9px;">
-    <div class="cb" style="background:var(--redbg);border:1.5px solid var(--redbd);min-width:80px;">
-      <div style="font-size:18px;font-weight:800;font-family:var(--mono);color:var(--red);">{loss_over_cnt}</div>
-      <div style="font-size:12px;color:var(--mid);margin-top:1px;">月損失超限</div>
+  <!-- ── 財管商品業務 ── -->
+  <div style="background:var(--s2);border:1px solid var(--bd);border-radius:8px;padding:10px 13px;page-break-inside:avoid;">
+    <div style="font-size:14px;font-weight:700;color:var(--acc);font-family:var(--mono);letter-spacing:.05em;text-transform:uppercase;margin-bottom:7px;">財管商品業務</div>
+    <div style="display:flex;height:9px;border-radius:4px;overflow:hidden;gap:2px;margin-bottom:8px;">
+      <div style="width:{bond_pct:.1f}%;background:#1565c0;border-radius:3px;"></div>
+      <div style="width:{fund_pct:.1f}%;background:#0097a7;border-radius:3px;"></div>
+      <div style="width:{struct_pct:.1f}%;background:#7c4dff;border-radius:3px;"></div>
     </div>
-    <div class="cb" style="background:var(--{'redbg' if y_over_cnt else 'gnbg'});border:1.5px solid var(--{'redbd' if y_over_cnt else 'gnbd'});min-width:80px;">
-      <div style="font-size:18px;font-weight:800;font-family:var(--mono);color:var(--{'red' if y_over_cnt else 'grn'});">{y_over_cnt}</div>
-      <div style="font-size:12px;color:var(--mid);margin-top:1px;">年損失超限</div>
-    </div>
-    <div class="cb" style="background:var(--{'orgbg' if loss_warn_cnt else 'gnbg'});border:1.5px solid var(--{'orgbd' if loss_warn_cnt else 'gnbd'});min-width:80px;">
-      <div style="font-size:18px;font-weight:800;font-family:var(--mono);color:var(--{'org' if loss_warn_cnt else 'grn'});">{loss_warn_cnt}</div>
-      <div style="font-size:12px;color:var(--mid);margin-top:1px;">月損失80%提醒</div>
-    </div>
-    <div class="cb" style="background:var(--{'orgbg' if y_warn_cnt else 'gnbg'});border:1.5px solid var(--{'orgbd' if y_warn_cnt else 'gnbd'});min-width:80px;">
-      <div style="font-size:18px;font-weight:800;font-family:var(--mono);color:var(--{'org' if y_warn_cnt else 'grn'});">{y_warn_cnt}</div>
-      <div style="font-size:12px;color:var(--mid);margin-top:1px;">年損失80%提醒</div>
-    </div>
-  </div>
-  {loss_bars}
-
-  <d<div style="display:flex;flex-direction:column;gap:12px;margin-top:10px;">
-    <!-- 金融交易處（上）：策略/交易並排 -->
-    <div class="dept-box">
-      <div class="dept-hd"><span>📊 金融交易處</span>{ft_badge}</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px;">
+      <div style="background:var(--s1);border:1px solid var(--bd);border-radius:6px;padding:7px 10px;display:flex;align-items:center;gap:7px;">
+        <div style="width:9px;height:9px;border-radius:2px;background:#1565c0;flex-shrink:0;"></div>
         <div>
-          <div class="sd" style="margin-top:0;">策略部位</div>
-          <table class="tbl">
-            {COL_GRP}{STR_HDR}
-            <tbody>{strat_rows}</tbody>
-          </table>
+          <div style="display:flex;align-items:baseline;gap:6px;">
+            <div style="font-size:15px;font-weight:700;font-family:var(--mono);color:var(--txt);">海外債券</div>
+            <div style="font-size:15px;font-weight:700;font-family:var(--mono);color:var(--txt);">{bond_pct:.1f}%</div>
+          </div>
+          <div style="font-size:12px;color:var(--dim);font-family:var(--mono);margin-top:1px;">{wm_bond_amt:.1f}億</div>
         </div>
+      </div>
+      <div style="background:var(--s1);border:1px solid var(--bd);border-radius:6px;padding:7px 10px;display:flex;align-items:center;gap:7px;">
+        <div style="width:9px;height:9px;border-radius:2px;background:#0097a7;flex-shrink:0;"></div>
         <div>
-          <div class="sd" style="margin-top:0;">交易部位</div>
-          <table class="tbl">
-            {COL_GRP}{TBL_HDR}
-            <tbody>{trade_rows}</tbody>
-          </table>
+          <div style="display:flex;align-items:baseline;gap:6px;">
+            <div style="font-size:15px;font-weight:700;font-family:var(--mono);color:var(--txt);">基金商品</div>
+            <div style="font-size:15px;font-weight:700;font-family:var(--mono);color:var(--txt);">{fund_pct:.1f}%</div>
+          </div>
+          <div style="font-size:12px;color:var(--dim);font-family:var(--mono);margin-top:1px;">{wm_fund_amt:.1f}億</div>
+        </div>
+      </div>
+      <div style="background:var(--s1);border:1px solid var(--bd);border-radius:6px;padding:7px 10px;display:flex;align-items:center;gap:7px;">
+        <div style="width:9px;height:9px;border-radius:2px;background:#7c4dff;flex-shrink:0;"></div>
+        <div>
+          <div style="display:flex;align-items:baseline;gap:6px;">
+            <div style="font-size:15px;font-weight:700;font-family:var(--mono);color:var(--txt);">結構型商品</div>
+            <div style="font-size:15px;font-weight:700;font-family:var(--mono);color:var(--txt);">{struct_pct:.1f}%</div>
+          </div>
+          <div style="font-size:12px;color:var(--dim);font-family:var(--mono);margin-top:1px;">{wm_struct_amt:.1f}億</div>
         </div>
       </div>
     </div>
-    <!-- 投資銀行處（下）-->
-    <div class="dept-box">
-      <div class="dept-hd"><span>🏦 投資銀行處</span></div>
-      <table class="tbl">
-        {COL_GRP}{TBL_HDR}
-        <tbody>{ib_rows}</tbody>
-      </table>
-    </div>
+    <div class="sd">達警示集中度明細</div>
+    {wm_alert_rows}
   </div>
 
+</div>
 
-  <div class="sd" style="margin-top:14px;">單檔損失超限 / 警示</div>
-  <div class="c-row">
+<!-- ═══ 第二頁：01 自營業務損益 + 單檔損失 ═══ -->
+<div class="page">
+  <div class="sec-hd">
+    <div class="sec-title"><span class="n">01</span> <span class="dept">自營業務</span> — 損益概覽 {ft_badge}</div>
+    <div class="sec-date">資料日期：{m['data_date']}</div>
+  </div>
+
+  <!-- 6格計數卡 -->
+  <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-bottom:12px;">
     <div class="cb" style="background:var(--redbg);border:1.5px solid var(--redbd);">
-      <div style="font-size:14px;font-weight:800;font-family:var(--mono);color:var(--red);">{d3_over_cnt}</div>
-      <div style="font-size:14px;color:var(--mid);margin-top:1px;">單檔損失超限</div>
+      <div style="font-size:20px;font-weight:800;font-family:var(--mono);color:var(--red);">{loss_over_cnt}</div>
+      <div style="font-size:11px;color:var(--mid);margin-top:1px;">月損失超限</div>
     </div>
-    <div class="cb" style="background:var(--{'yelbg' if d3_warn_cnt else 'gnbg'});border:1.5px solid var(--{'yelbd' if d3_warn_cnt else 'gnbd'});">
-      <div style="font-size:14px;font-weight:800;font-family:var(--mono);color:var(--{'yel' if d3_warn_cnt else 'grn'});">{d3_warn_cnt}</div>
-      <div style="font-size:14px;color:var(--mid);margin-top:1px;">單檔損失80%提醒</div>
+    <div class="cb" style="background:var(--{'redbg' if y_over_cnt else 'gnbg'});border:1.5px solid var(--{'redbd' if y_over_cnt else 'gnbd'});">
+      <div style="font-size:20px;font-weight:800;font-family:var(--mono);color:var(--{'red' if y_over_cnt else 'grn'});">{y_over_cnt}</div>
+      <div style="font-size:11px;color:var(--mid);margin-top:1px;">年損失超限</div>
+    </div>
+    <div class="cb" style="background:var(--{'orgbg' if loss_warn_cnt else 'gnbg'});border:1.5px solid var(--{'orgbd' if loss_warn_cnt else 'gnbd'});">
+      <div style="font-size:20px;font-weight:800;font-family:var(--mono);color:var(--{'org' if loss_warn_cnt else 'grn'});">{loss_warn_cnt}</div>
+      <div style="font-size:11px;color:var(--mid);margin-top:1px;">月損失80%提醒</div>
+    </div>
+    <div class="cb" style="background:var(--{'orgbg' if y_warn_cnt else 'gnbg'});border:1.5px solid var(--{'orgbd' if y_warn_cnt else 'gnbd'});">
+      <div style="font-size:20px;font-weight:800;font-family:var(--mono);color:var(--{'org' if y_warn_cnt else 'grn'});">{y_warn_cnt}</div>
+      <div style="font-size:11px;color:var(--mid);margin-top:1px;">年損失80%提醒</div>
+    </div>
+    <div class="cb" style="background:var(--redbg);border:1.5px solid var(--redbd);">
+      <div style="font-size:20px;font-weight:800;font-family:var(--mono);color:var(--red);">{d3_over_cnt}</div>
+      <div style="font-size:11px;color:var(--mid);margin-top:1px;">單檔損失超限</div>
+    </div>
+    <div class="cb" style="background:var(--{'orgbg' if d3_warn_cnt else 'gnbg'});border:1.5px solid var(--{'orgbd' if d3_warn_cnt else 'gnbd'});">
+      <div style="font-size:20px;font-weight:800;font-family:var(--mono);color:var(--{'org' if d3_warn_cnt else 'grn'});">{d3_warn_cnt}</div>
+      <div style="font-size:11px;color:var(--mid);margin-top:1px;">單檔損失80%提醒</div>
     </div>
   </div>
-  {d3_html}
-  <div style="margin-top:5px;font-size:12px;color:var(--dim);font-family:var(--mono);">超限條件：興櫃損失≥3,000萬或損失率≥30%且損失≥100萬|上市櫃損失≥3,000萬或損失率≥20%且損失≥100萬 </div>
+
+  <!-- 金融交易處 -->
+  <div class="dept-box" style="margin-bottom:8px;">
+    <div class="dept-hd"><span>📊 金融交易處</span>{ft_badge}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+      <div>
+        <div class="sd" style="margin-top:0;">策略部位</div>
+        <table class="tbl">{COL_GRP}{STR_HDR}<tbody>{strat_rows}</tbody></table>
+      </div>
+      <div>
+        <div class="sd" style="margin-top:0;">交易部位</div>
+        <table class="tbl">{COL_GRP}{TBL_HDR}<tbody>{trade_rows}</tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 投資銀行處 -->
+  <div class="dept-box" style="margin-bottom:8px;">
+    <div class="dept-hd"><span>🏦 投資銀行處</span></div>
+    <table class="tbl">{COL_GRP}{TBL_HDR}<tbody>{ib_rows}</tbody></table>
+  </div>
+
+  <!-- 單檔損失超限 / 警示 -->
+  <div class="dept-box">
+    <div class="dept-hd">⚠ 單檔損失超限 / 警示</div>
+    {d3_html}
+    <div style="margin-top:8px;font-size:11px;color:var(--dim);font-family:var(--mono);line-height:1.7;">
+      超限條件：興櫃損失≥3,000萬或損失率≥30%且損失≥100萬　｜　上市櫃損失≥3,000萬或損失率≥20%且損失≥100萬
+    </div>
+  </div>
+
 </div>
 
 <!-- ═══ 第三頁：02 財管商品業務 ═══ -->
 <div class="page">
   <div class="sec-hd">
     <div class="sec-title"><span class="n">02</span> <span class="dept">財管商品業務</span> — 集中度管理</div>
-    <div class="sec-date">資料日 2026/02/26</div>
+    <div class="sec-date">資料日期：{report_date}</div>
   </div>
   <div style="display:flex;height:10px;border-radius:5px;overflow:hidden;gap:2px;margin-bottom:6px;">
     <div style="width:{bond_pct:.1f}%;background:#1565c0;border-radius:3px;"></div>
@@ -796,7 +825,7 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
 <div class="page">
   <div class="sec-hd">
     <div class="sec-title"><span class="n">03</span> <span class="dept">經紀業務</span></div>
-    <div class="sec-date">資料日 2026/02/26</div>
+    <div class="sec-date">資料日期：{report_date}</div>
   </div>
 
   <!-- 融資前5大個股 -->
