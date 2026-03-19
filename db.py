@@ -211,7 +211,7 @@ def list_dates(db_path: Path) -> list[dict]:
         ).fetchall()
     return [{"date": r[0], "level": r[1], "alerts": json.loads(r[2])} for r in rows]
 
--- 儲存區塊
+# 儲存區塊
 def save_custom_section(db_path: Path, report_date: str, section: dict):
     with get_conn(db_path) as conn:
         conn.execute("""
@@ -230,7 +230,7 @@ def save_custom_section(db_path: Path, report_date: str, section: dict):
             1 if section.get("page_break_before", False) else 0,
         ))
 
--- 讀取某日所有區塊
+# 讀取某日所有區塊
 def load_custom_sections(db_path: Path, report_date: str) -> list[dict]:
     with get_conn(db_path) as conn:
         rows = conn.execute("""
@@ -251,7 +251,7 @@ def load_custom_sections(db_path: Path, report_date: str) -> list[dict]:
         "page_break_before": bool(r[6]),
     } for r in rows]
 
---刪除區塊
+# 刪除區塊
 def delete_custom_section(db_path: Path, report_date: str, section_id: str):
     with get_conn(db_path) as conn:
         conn.execute("""
@@ -259,7 +259,7 @@ def delete_custom_section(db_path: Path, report_date: str, section_id: str):
             WHERE report_date=? AND section_id=?
         """, (report_date, section_id))
 
---複製前一日區塊
+# 複製前一日區塊
 def copy_custom_sections(db_path: Path, from_date: str, to_date: str):
     sections = load_custom_sections(db_path, from_date)
     with get_conn(db_path) as conn:
