@@ -23,7 +23,7 @@ from pathlib import Path
 
 import config
 from extract import extract_all
-from db     import init_db, save_report
+from db     import init_db, save_report, load_custom_sections
 from render import generate_html, save_html
 
 
@@ -45,7 +45,9 @@ def run(target_date: date, overwrite: bool = True):
 
     # 3. 產出 HTML
     print("\n[3/3] 產出 HTML...")
-    html = generate_html(data)
+    report_date_db = data["report_date"].replace("/", "-")
+    custom_sections = load_custom_sections(config.DB_PATH, report_date_db)
+    html = generate_html(data, custom_sections=custom_sections)
     out_path = save_html(html, config.OUTPUT_DIR, data["report_date"])
     print(f"  OK HTML 已存至：{out_path}")
 
