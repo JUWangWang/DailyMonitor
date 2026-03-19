@@ -736,20 +736,7 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
       </table>
     </div>
   </div>
-    <div class="dept-box">
-      <div class="dept-hd"><span>📊 金融交易處</span></div>
-      <div class="sd" style="margin-top:0;">策略部位</div>
-      <table class="tbl">
-        {COL_GRP}{STR_HDR}
-        <tbody>{strat_rows}</tbody>
-      </table>
-      <div class="sd">交易部位</div>
-      <table class="tbl">
-        {COL_GRP}{TBL_HDR}
-        <tbody>{trade_rows}</tbody>
-      </table>
-    </div>
-  </div>
+
 
   <div class="sd" style="margin-top:14px;">單檔損失超限 / 警示</div>
   <div class="c-row">
