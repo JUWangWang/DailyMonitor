@@ -879,16 +879,17 @@ elif mode == "📄 產出報告":
         sel_date = st.selectbox("選擇日期", date_options)
 
         if st.button("▶ 產出 HTML", type="primary"):
-            from db import load_report
+            from db import load_report, load_custom_sections
             from render import generate_html, save_html
 
             data = load_report(config.DB_PATH, sel_date)
+            custom_sections = load_custom_sections(config.DB_PATH, sel_date)
             if not data:
                 st.error("找不到該日資料")
             else:
                 with st.spinner("產出中..."):
                     try:
-                        html = generate_html(data)
+                        html = generate_html(data, custom_sections=custom_sections)
                         out_path = save_html(html, config.OUTPUT_DIR, data["report_date"])
                         st.success(f"✅ 已產出：`{out_path}`")
                         with open(out_path, "r", encoding="utf-8") as f:
