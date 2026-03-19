@@ -495,10 +495,11 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
 .gA{{color:#1a9e6a;}}.gB{{color:var(--acc2);}}.gC{{color:#b45309;}}.gD{{color:#d97706;}}.gE{{color:var(--red);}}
 @media print{{
   body{{background:white;}}
-  .page{{box-shadow:none;margin:0;page-break-after:always;}}
-  .page:last-child{{page-break-after:auto;}}
-  .page-landscape{{page-break-after:always;}}
-  @page{{size:A4 portrait;margin:8mm;}}
+  .page,.page-land{{box-shadow:none;margin:0;page-break-after:always;}}
+  .page:last-child,.page-land:last-child{{page-break-after:auto;}}
+  .page{{page:portrait;}}
+  .page-land{{page:landscape;}}
+  @page portrait{{size:A4 portrait;margin:8mm;}}
   @page landscape{{size:A4 landscape;margin:8mm;}}
 }}
 </style>
@@ -562,7 +563,7 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
       <div>
         <div class="sd" style="margin-top:0;">損失超限 / 警示</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:9px;">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px;">
           <div class="cb" style="background:var(--redbg);border:1px solid var(--redbd);min-width:80px;">
             <div style="font-size:18px;font-weight:800;font-family:var(--mono);color:var(--red);">{loss_over_cnt}</div>
             <div style="font-size:12px;color:var(--mid);margin-top:1px;">月損失超限</div>
@@ -679,7 +680,7 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
 </div>
 
 <!-- ═══ 第二頁：01 自營業務損益 + 單檔損失 ═══ -->
-<div class="page">
+<div class="page-land">
   <div class="sec-hd">
     <div class="sec-title"><span class="n">01</span> <span class="dept">自營業務</span> — 損益概覽 {ft_badge}</div>
     <div class="sec-date">截至 {m['data_date']}・單位：萬元</div>
