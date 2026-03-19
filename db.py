@@ -75,6 +75,20 @@ def init_db(db_path: Path):
             grade_d_pct   REAL,
             grade_e_pct   REAL
         );
+
+        CREATE TABLE IF NOT EXISTS custom_sections (
+            report_date        TEXT,
+            section_id         TEXT,
+            title              TEXT,
+            section_type       TEXT,   -- text / bullets / table
+            content_json       TEXT,
+            display_order      INTEGER DEFAULT 100,
+            enabled            INTEGER DEFAULT 1,
+            page_break_before  INTEGER DEFAULT 0,
+            created_at         TEXT DEFAULT (datetime('now','localtime')),
+            updated_at         TEXT DEFAULT (datetime('now','localtime')),
+            PRIMARY KEY (report_date, section_id)
+        );
         """)
     print(f"  OK DB 初始化完成：{db_path}")
 
@@ -196,3 +210,73 @@ def list_dates(db_path: Path) -> list[dict]:
             "SELECT report_date, alert_level, alert_items FROM daily_summary ORDER BY report_date DESC"
         ).fetchall()
     return [{"date": r[0], "level": r[1], "alerts": json.loads(r[2])} for r in rows]
+
+-- 儲存區塊
+def save_custom_section(db_path: Path, report_date: str, section: dict):
+    with get_conn(db_path) as conn:
+        conn.execute("""
+            INSERT OR REPLACE INTO custom_sections
+            (report_date, section_id, title, section_type, content_json,
+             display_order, enabled, page_break_before, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+        """, (
+            report_date,
+            section["section_id"],
+            section["title"],
+            section["section_type"],
+            json.dumps(section["content"], ensure_ascii=False),
+            section.get("display_order", 100),
+            1 if section.get("enabled", True) else 0,
+            1 if section.get("page_break_before", False) else 0,
+        ))
+
+-- 讀取某日所有區塊
+def load_custom_sections(db_path: Path, report_date: str) -> list[dict]:
+    with get_conn(db_path) as conn:
+        rows = conn.execute("""
+            SELECT section_id, title, section_type, content_json,
+                   display_order, enabled, page_break_before
+            FROM custom_sections
+            WHERE report_date=?
+            ORDER BY display_order, section_id
+        """, (report_date,)).fetchall()
+
+    return [{
+        "section_id": r[0],
+        "title": r[1],
+        "section_type": r[2],
+        "content": json.loads(r[3]),
+        "display_order": r[4],
+        "enabled": bool(r[5]),
+        "page_break_before": bool(r[6]),
+    } for r in rows]
+
+--刪除區塊
+def delete_custom_section(db_path: Path, report_date: str, section_id: str):
+    with get_conn(db_path) as conn:
+        conn.execute("""
+            DELETE FROM custom_sections
+            WHERE report_date=? AND section_id=?
+        """, (report_date, section_id))
+
+--複製前一日區塊
+def copy_custom_sections(db_path: Path, from_date: str, to_date: str):
+    sections = load_custom_sections(db_path, from_date)
+    with get_conn(db_path) as conn:
+        conn.execute("DELETE FROM custom_sections WHERE report_date=?", (to_date,))
+        for s in sections:
+            conn.execute("""
+                INSERT OR REPLACE INTO custom_sections
+                (report_date, section_id, title, section_type, content_json,
+                 display_order, enabled, page_break_before, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+            """, (
+                to_date,
+                s["section_id"],
+                s["title"],
+                s["section_type"],
+                json.dumps(s["content"], ensure_ascii=False),
+                s["display_order"],
+                1 if s["enabled"] else 0,
+                1 if s["page_break_before"] else 0,
+            ))
