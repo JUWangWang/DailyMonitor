@@ -112,24 +112,51 @@ def generate_html(data: dict) -> str:
     if not ai_html:
         ai_html = '<div class="ai g">✅ 今日各項指標正常</div>'
 
+    # ── 損失狀態圓圈（月/年 × 超限/警示）────────────────────
+    def _loss_badge(m_pct, y_pct):
+        """
+        依月損失/年損失使用率組合顯示圓圈
+        正常 → 綠點
+        月超限 → 紅框月字  月警示 → 黃框月字
+        年超限 → 紅框年字  年警示 → 黃框年字
+        多個狀態 → 並排顯示
+        """
+        mp = float(m_pct or 0)
+        yp = float(y_pct or 0)
+        parts = []
+        # 月損失
+        if mp >= 1.0:
+            parts.append('<span style="display:inline-flex;align-items:center;justify-content:center;'
+                         'width:20px;height:20px;border-radius:50%;border:2px solid #c62828;'
+                         'color:#c62828;font-size:10px;font-weight:700;font-family:var(--sans);">月</span>')
+        elif mp >= 0.8:
+            parts.append('<span style="display:inline-flex;align-items:center;justify-content:center;'
+                         'width:20px;height:20px;border-radius:50%;border:2px solid #ea580c;'
+                         'color:#ea580c;font-size:10px;font-weight:700;font-family:var(--sans);">月</span>')
+        # 年損失
+        if yp >= 1.0:
+            parts.append('<span style="display:inline-flex;align-items:center;justify-content:center;'
+                         'width:20px;height:20px;border-radius:50%;border:2px solid #c62828;'
+                         'color:#c62828;font-size:10px;font-weight:700;font-family:var(--sans);">年</span>')
+        elif yp >= 0.8:
+            parts.append('<span style="display:inline-flex;align-items:center;justify-content:center;'
+                         'width:20px;height:20px;border-radius:50%;border:2px solid #ea580c;'
+                         'color:#ea580c;font-size:10px;font-weight:700;font-family:var(--sans);">年</span>')
+        # 都正常 → 綠點
+        if not parts:
+            return '<span style="color:#1a9e6a;font-size:16px;line-height:1;">●</span>'
+        return '<span style="display:inline-flex;gap:3px;align-items:center;">' + ''.join(parts) + '</span>'
+
     # ── P&L 列產生器 ─────────────────────────────────────────
     def _pnl_row(r, row_cls=""):
         ns = 'style="color:var(--red);font-weight:600;"' if row_cls=="alert-row" else ""
         mp = float(r.get("m_pct") or 0)
         yp = float(r.get("y_pct") or 0)
-        st = r.get("status","")
-        # 綜合判斷：月超限/年超限/月提醒/年提醒
-        if mp >= 1.0 or yp >= 1.0 or st in ("超限","月損失超限"):
-            effective_st = "超限"
-        elif mp >= 0.8 or yp >= 0.8:
-            effective_st = "80%提醒"
-        else:
-            effective_st = st
         return f"""<tr class="{row_cls}">
           <td class="l" {ns}>{r['dept']}</td>
           <td class="r {_updn(r['mtd'])}">{_wan(r['mtd'])}</td>
           <td class="r {_updn(r['ytd'])}">{_wan(r['ytd'])}</td>
-          <td class="r">{_badge(effective_st) if effective_st else _badge('—')}</td>
+          <td class="r" style="text-align:center;">{_loss_badge(mp, yp)}</td>
         </tr>"""
 
     def _total_row(r, cls="subtotal"):
@@ -679,7 +706,28 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
   </div>
   {loss_bars}
 
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:10px;">
+  <d<div style="display:flex;flex-direction:column;gap:12px;margin-top:10px;">
+    <!-- 金融交易處（上）：策略/交易並排 -->
+    <div class="dept-box">
+      <div class="dept-hd"><span>📊 金融交易處</span>{ft_badge}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+        <div>
+          <div class="sd" style="margin-top:0;">策略部位</div>
+          <table class="tbl">
+            {COL_GRP}{STR_HDR}
+            <tbody>{strat_rows}</tbody>
+          </table>
+        </div>
+        <div>
+          <div class="sd" style="margin-top:0;">交易部位</div>
+          <table class="tbl">
+            {COL_GRP}{TBL_HDR}
+            <tbody>{trade_rows}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <!-- 投資銀行處（下）-->
     <div class="dept-box">
       <div class="dept-hd"><span>🏦 投資銀行處</span></div>
       <table class="tbl">
@@ -687,6 +735,7 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
         <tbody>{ib_rows}</tbody>
       </table>
     </div>
+  </div>
     <div class="dept-box">
       <div class="dept-hd"><span>📊 金融交易處</span></div>
       <div class="sd" style="margin-top:0;">策略部位</div>
