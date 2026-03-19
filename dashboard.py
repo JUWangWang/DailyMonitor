@@ -17,6 +17,9 @@ import plotly.express as px
 
 import config
 
+import uuid
+from db import load_custom_sections, save_custom_section, delete_custom_section
+
 # ── 頁面設定 ────────────────────────────────────────────────
 st.set_page_config(
     page_title="風險管理日報 查詢系統",
@@ -198,6 +201,7 @@ with st.sidebar:
     st.markdown("##### 報告產出與信件通知")
     report_mode = st.radio("報告", [
         "📄 產出報告",
+        "🧩 報告區塊編輯器",
         "✉️ 呈報信件",
     ], label_visibility="collapsed")
 
@@ -897,6 +901,107 @@ elif mode == "📄 產出報告":
                         )
                     except Exception as e:
                         st.error(f"❌ 產出失敗：{e}")
+# ════════════════════════════════════════════════════════════
+#  🧩 報告區塊編輯器
+# ════════════════════════════════════════════════════════════
+elif mode == "🧩 報告區塊編輯器":
+    st.subheader("🧩 報告區塊編輯器")
+
+    if not date_options:
+        st.warning("資料庫尚無資料，請先執行「🔄 資料轉檔」。")
+        st.stop()
+
+    sel_date = st.selectbox("選擇報告日期", date_options, key="custom_section_date")
+    report_date_db = sel_date  # 這裡 date_options 本來就是 YYYY-MM-DD
+
+    sections = load_custom_sections(config.DB_PATH, report_date_db)
+
+    st.markdown("### 既有區塊")
+    if sections:
+        list_df = pd.DataFrame([
+            {
+                "順序": s["display_order"],
+                "啟用": s["enabled"],
+                "類型": s["section_type"],
+                "標題": s["title"],
+                "新頁": s["page_break_before"],
+                "section_id": s["section_id"],
+            }
+            for s in sections
+        ])
+        st.dataframe(list_df, hide_index=True, use_container_width=True)
+    else:
+        st.info("目前尚無自訂區塊。")
+
+    st.divider()
+    st.markdown("### 新增 / 編輯區塊")
+
+    title = st.text_input("區塊標題")
+    section_type = st.selectbox("區塊類型", ["text", "bullets", "table"])
+    display_order = st.number_input("顯示順序", min_value=1, step=10, value=100)
+    enabled = st.checkbox("啟用", value=True)
+    page_break_before = st.checkbox("此區塊另起新頁", value=False)
+
+    content = {}
+
+    if section_type == "text":
+        text_value = st.text_area("內容", height=220, placeholder="請輸入一般說明文字，可分段。")
+        content = {"text": text_value}
+
+    elif section_type == "bullets":
+        bullet_text = st.text_area(
+            "條列內容（每行一點）",
+            height=180,
+            placeholder="黃金ETF Vega 使用率偏高\n白銀ETF 波動加劇\n建議提高盤中監控頻率"
+        )
+        items = [x.strip() for x in bullet_text.splitlines() if x.strip()]
+        content = {"items": items}
+
+    elif section_type == "table":
+        columns_text = st.text_input("欄位名稱（以逗號分隔）", value="項目,數值,狀態")
+        cols = [c.strip() for c in columns_text.split(",") if c.strip()]
+        if not cols:
+            cols = ["欄位1", "欄位2"]
+        table_df = st.data_editor(
+            pd.DataFrame(columns=cols),
+            num_rows="dynamic",
+            use_container_width=True,
+            key="custom_table_editor"
+        )
+        content = {
+            "columns": cols,
+            "rows": table_df.fillna("").values.tolist()
+        }
+
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("💾 儲存區塊", type="primary"):
+            if not title.strip():
+                st.error("請輸入區塊標題")
+            else:
+                section = {
+                    "section_id": str(uuid.uuid4())[:8],
+                    "title": title.strip(),
+                    "section_type": section_type,
+                    "content": content,
+                    "display_order": int(display_order),
+                    "enabled": enabled,
+                    "page_break_before": page_break_before,
+                }
+                save_custom_section(config.DB_PATH, report_date_db, section)
+                st.success("✅ 已儲存區塊，請重新整理或切換頁面後查看。")
+
+    with col2:
+        if sections:
+            del_target = st.selectbox(
+                "選擇要刪除的區塊",
+                options=sections,
+                format_func=lambda s: f"{s['display_order']}｜{s['title']}",
+                key="delete_custom_section_target"
+            )
+            if st.button("🗑 刪除選取區塊"):
+                delete_custom_section(config.DB_PATH, report_date_db, del_target["section_id"])
+                st.success("✅ 已刪除區塊，請重新整理或切換頁面後查看。")
 
 
 # ════════════════════════════════════════════════════════════
