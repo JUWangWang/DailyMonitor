@@ -59,10 +59,15 @@ def _conc_row(item, cat_label):
     status = item.get("status", "正常")
     name   = item.get("name", "")
     fill   = min(pct / l1, 1.0) * 100 if l1 else 0
-    # 達L1/達L2 皆為黃色警示（非紅色超限）
-    YELLOW_ST = ("達L1","達L2","L1 80%","L1 80%提醒","接近L1","80%提醒")
-    color  = "#f59e0b" if status in YELLOW_ST else "var(--grn)"
-    row_cls = "wy"     if status in YELLOW_ST else ""
+    # 顏色與 _badge 一致
+    if status in ("達L2",):
+        color, row_cls = "#c62828", "wr"   # 紅
+    elif status in ("達L1",):
+        color, row_cls = "#f97316", "wy"   # 橙
+    elif status in ("L1 80%","L1 80%提醒","接近L1","80%提醒"):
+        color, row_cls = "#f59e0b", "wy"   # 黃
+    else:
+        color, row_cls = "var(--grn)", ""  # 綠（正常）
     name_style = f'style="color:{color};"' if row_cls else ""
     l_label = f"L1={_pct(l1,0)}" + (f" L2={_pct(l2,0)}" if l2 else "")
     return f"""<div class="conc-row {row_cls}">
@@ -255,9 +260,13 @@ def generate_html(data: dict) -> str:
             pct_val = (v.get("pct") or 0)
             l1_val  = (v.get("l1") or 0)
             fill    = min(pct_val/l1_val,1.0)*100 if l1_val else 0
-            # 達L1/達L2 皆為黃色警示
-            color   = "#f59e0b"
-            row_cls = "wy"
+            # 依狀態給顏色（與 _badge 一致）
+            if st in ("達L2",):
+                color, row_cls = "#c62828", "wr"   # 紅
+            elif st in ("達L1",):
+                color, row_cls = "#f97316", "wy"   # 橙
+            else:
+                color, row_cls = "#f59e0b", "wy"   # 黃（L1 80%提醒等）
             wm_alert_rows += f"""<div class="conc-row {row_cls}" style="margin-bottom:4px;">
               <div class="conc-cat">{label}</div>
               <div class="conc-name" style="color:{color};">{v.get('name','')}</div>
