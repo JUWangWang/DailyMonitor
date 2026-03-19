@@ -318,9 +318,10 @@ def generate_html(data: dict) -> str:
         if m >= 130: return '<span style="color:#f59e0b;font-size:16px;line-height:1;">●</span>'
         return '<span style="color:#c62828;font-size:16px;line-height:1;">●</span>'
 
+    grade_color = {"A":"#1a9e6a","B":"#1976d2","C":"#b45309","D":"#d97706","E":"#c62828"}
     margin_html = "".join(f"""<tr>
       <td><span style="color:var(--acc2);font-family:var(--mono);">{r['code']}</span> {r['name']}</td>
-      <td>{_badge(r.get('grade',''))}</td>
+      <td style="text-align:center;"><span style="font-family:var(--mono);font-weight:700;color:{grade_color.get(r.get('grade',''),chr(35)+'666')};">{r.get('grade','—')}</span></td>
       <td class="r">{r['balance']/1e8:.1f}</td>
       <td class="r">{r['maint']:.1f}%</td>
       <td class="r">{_maint_badge(r['maint'])}</td></tr>"""
