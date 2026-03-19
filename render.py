@@ -152,31 +152,44 @@ def generate_html(data: dict) -> str:
 
     ft_badge = _badge('損失超限') if any(r.get("status") in ("超限","損失超限") for r in m["trade_rows"]) else _badge('正常')
 
-    # ── 損失超限 bars ─────────────────────────────────────────
-    loss_over_cnt = len(m["loss_over"])
-    loss_warn_cnt = len(m["loss_warn"])
+    # ── 損失超限 bars（四類：月超限/年超限/月80%/年80%）────────
+    m_loss_over = m.get("m_loss_over", [])
+    m_loss_warn = m.get("m_loss_warn", [])
+    y_loss_over = m.get("y_loss_over", [])
+    y_loss_warn = m.get("y_loss_warn", [])
+
+    loss_over_cnt = len(m_loss_over)
+    loss_warn_cnt = len(m_loss_warn)
+    y_over_cnt    = len(y_loss_over)
+    y_warn_cnt    = len(y_loss_warn)
     d3_over_cnt   = len(m["d3_over"])
     d3_warn_cnt   = len(m["d3_warn"])
 
+    def _loss_bar(r, pct_key, label, is_over):
+        pv   = float(r.get(pct_key) or 0) * 100
+        fill = min(pv, 100)
+        if is_over:
+            bg, bd, fc = "var(--redbg)", "var(--redbd)", "var(--red)"
+        else:
+            bg, bd, fc = "var(--orgbg)", "var(--orgbd)", "var(--org)"
+        badge_st = ("超限" if pct_key == "m_pct" else "超限") if is_over else "80%提醒"
+        return f"""<div class="lrow" style="background:{bg};border-color:{bd};">
+          <div style="flex:1;"><div style="font-size:14px;font-weight:700;color:{fc};">{r['dept']} {r['biz']}</div>
+          <div style="font-size:12px;color:var(--mid);font-family:var(--mono);margin-top:2px;">{label}</div></div>
+          <div style="display:flex;align-items:center;gap:7px;flex:1;">
+            <div class="pbar"><div class="pbar-fill" style="width:{fill:.0f}%;background:{fc};"></div></div>
+            <div class="pbar-pct" style="color:{fc};">{pv:.1f}%</div>
+          </div>{_badge(badge_st)}</div>"""
+
     loss_bars = ""
-    for r in m["loss_over"]:
-        pv = float(r.get("m_pct") or 0) * 100
-        loss_bars += f"""<div class="lrow" style="background:var(--redbg);border-color:var(--redbd);">
-          <div style="flex:1;"><div style="font-size:14px;font-weight:700;color:var(--red);">{r['dept']} {r['biz']}</div>
-          <div style="font-size:14px;color:var(--mid);font-family:var(--mono);margin-top:2px;">月損失使用率</div></div>
-          <div style="display:flex;align-items:center;gap:7px;flex:1;">
-            <div class="pbar"><div class="pbar-fill" style="width:100%;background:var(--red);"></div></div>
-            <div class="pbar-pct" style="color:var(--red);">{pv:.1f}%</div>
-          </div>{_badge('損失超限')}</div>"""
-    for r in m["loss_warn"]:
-        pv = float(r.get("m_pct") or 0) * 100
-        loss_bars += f"""<div class="lrow" style="background:var(--yelbg);border-color:var(--yelbd);">
-          <div style="flex:1;"><div style="font-size:12px;font-weight:600;color:var(--yel);">{r['dept']} {r['biz']}</div>
-          <div style="font-size:14px;color:var(--mid);font-family:var(--mono);margin-top:2px;">月損失使用率</div></div>
-          <div style="display:flex;align-items:center;gap:7px;flex:1;">
-            <div class="pbar"><div class="pbar-fill" style="width:{min(pv,100):.0f}%;background:#f59e0b;"></div></div>
-            <div class="pbar-pct" style="color:var(--yel);">{pv:.1f}%</div>
-          </div>{_badge('80%提醒')}</div>"""
+    for r in m_loss_over:
+        loss_bars += _loss_bar(r, "m_pct", "月損失使用率", True)
+    for r in y_loss_over:
+        loss_bars += _loss_bar(r, "y_pct", "年損失使用率", True)
+    for r in m_loss_warn:
+        loss_bars += _loss_bar(r, "m_pct", "月損失使用率", False)
+    for r in y_loss_warn:
+        loss_bars += _loss_bar(r, "y_pct", "年損失使用率", False)
 
     # ── D3 ───────────────────────────────────────────────────
     # d3：只顯示超限/80%提醒，觀察不顯示
@@ -318,7 +331,7 @@ def generate_html(data: dict) -> str:
         if m >= 130: return '<span style="color:#f59e0b;font-size:16px;line-height:1;">●</span>'
         return '<span style="color:#c62828;font-size:16px;line-height:1;">●</span>'
 
-    grade_color = {"A":"#1a9e6a","B":"#1976d2","C":"#b45309","D":"#d97706","E":"#c62828"}
+    grade_color = {"A":"#1976d2","B":"#1976d2","C":"#f59e0b","D":"#f97316","E":"#c62828"}
     margin_html = "".join(f"""<tr>
       <td><span style="color:var(--acc2);font-family:var(--mono);">{r['code']}</span> {r['name']}</td>
       <td style="text-align:center;"><span style="font-family:var(--mono);font-weight:700;color:{grade_color.get(r.get('grade',''),chr(35)+'666')};">{r.get('grade','—')}</span></td>
@@ -359,6 +372,7 @@ def generate_html(data: dict) -> str:
   --grn:#1a9e6a;--gnbg:#edf7f3;--gnbd:#b2dfcf;
   --red:#c62828;--redbg:#fef2f2;--redbd:#fccaca;
   --yel:#b45309;--yelbg:#fffbeb;--yelbd:#fde68a;
+  --org:#ea580c;--orgbg:#fff7ed;--orgbd:#fed7aa;
   --mono:'IBM Plex Mono',monospace;--sans:system-ui,sans-serif;
 }}
 *,*::before,*::after{{box-sizing:border-box;margin:0;padding:0;}}
@@ -391,13 +405,13 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
 .tbl{{width:100%;border-collapse:collapse;table-layout:fixed;}}
 .tbl th{{text-align:left;font-size:14px;font-family:var(--mono);color:var(--dim);padding:0 4px 6px;border-bottom:1.5px solid var(--bd);font-weight:600;letter-spacing:.03em;text-transform:uppercase;white-space:nowrap;}}
 .tbl th.r,.tbl td.r{{text-align:right;}}
-.tbl td{{padding:5px 4px;font-size:14px;border-bottom:1px solid var(--bd);font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}}
+.tbl td{{padding:5px 4px;font-size:14px;border-bottom:1px solid var(--bd);font-family:var(--mono);word-break:break-all;}}
 .tbl td.l{{color:var(--mid);font-size:14px;font-family:var(--sans);}}
 .tbl tr:last-child td{{border-bottom:none;}}
 .tbl tr.subtotal td{{border-top:1px solid var(--bd2);background:var(--s2);font-weight:700;}}
 .tbl tr.grand td{{border-top:2px solid var(--acc);background:#e8f0fb;font-weight:700;font-size:14px;}}
 .tbl tr.alert-row td{{background:var(--redbg);}}
-.up{{color:var(--grn)!important;font-weight:600;}}.dn{{color:var(--red)!important;font-weight:600;}}.yw{{color:var(--yel)!important;font-weight:600;}}
+.up{{color:var(--txt)!important;font-weight:700;}}.dn{{color:var(--red)!important;font-weight:600;}}.yw{{color:var(--yel)!important;font-weight:600;}}
 .b{{display:inline-block;font-size:14px;font-family:var(--mono);font-weight:700;padding:2px 6px;border-radius:3px;}}
 .br{{background:var(--redbg);color:var(--red);border:1px solid var(--redbd);}}
 .by{{background:var(--yelbg);color:var(--yel);border:1px solid var(--yelbd);}}
@@ -500,14 +514,22 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
       <div>
         <div class="sd" style="margin-top:0;">損失超限 / 警示</div>
-        <div class="c-row">
-          <div class="cb" style="background:var(--redbg);border:1px solid var(--redbd);">
-            <div style="font-size:14px;font-weight:800;font-family:var(--mono);color:var(--red);">{loss_over_cnt}</div>
-            <div style="font-size:14px;color:var(--mid);margin-top:1px;">損失超限</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:9px;">
+          <div class="cb" style="background:var(--redbg);border:1px solid var(--redbd);min-width:80px;">
+            <div style="font-size:18px;font-weight:800;font-family:var(--mono);color:var(--red);">{loss_over_cnt}</div>
+            <div style="font-size:12px;color:var(--mid);margin-top:1px;">月損失超限</div>
           </div>
-          <div class="cb" style="background:var(--{{'yelbg' if loss_warn_cnt else 'gnbg'}});border:1px solid var(--{{'yelbd' if loss_warn_cnt else 'gnbd'}});">
-            <div style="font-size:14px;font-weight:800;font-family:var(--mono);color:var(--{{'yel' if loss_warn_cnt else 'grn'}});">{loss_warn_cnt}</div>
-            <div style="font-size:14px;color:var(--mid);margin-top:1px;">損失80%提醒</div>
+          <div class="cb" style="background:var(--{{'redbg' if y_over_cnt else 'gnbg'}});border:1px solid var(--{{'redbd' if y_over_cnt else 'gnbd'}});min-width:80px;">
+            <div style="font-size:18px;font-weight:800;font-family:var(--mono);color:var(--{{'red' if y_over_cnt else 'grn'}});">{y_over_cnt}</div>
+            <div style="font-size:12px;color:var(--mid);margin-top:1px;">年損失超限</div>
+          </div>
+          <div class="cb" style="background:var(--{{'orgbg' if loss_warn_cnt else 'gnbg'}});border:1px solid var(--{{'orgbd' if loss_warn_cnt else 'gnbd'}});min-width:80px;">
+            <div style="font-size:18px;font-weight:800;font-family:var(--mono);color:var(--{{'org' if loss_warn_cnt else 'grn'}});">{loss_warn_cnt}</div>
+            <div style="font-size:12px;color:var(--mid);margin-top:1px;">月損失80%提醒</div>
+          </div>
+          <div class="cb" style="background:var(--{{'orgbg' if y_warn_cnt else 'gnbg'}});border:1px solid var(--{{'orgbd' if y_warn_cnt else 'gnbd'}});min-width:80px;">
+            <div style="font-size:18px;font-weight:800;font-family:var(--mono);color:var(--{{'org' if y_warn_cnt else 'grn'}});">{y_warn_cnt}</div>
+            <div style="font-size:12px;color:var(--mid);margin-top:1px;">年損失80%提醒</div>
           </div>
         </div>
         {loss_bars}
@@ -611,33 +633,41 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
 <!-- ═══ 第二頁：01 自營業務損益 + 單檔損失 ═══ -->
 <div class="page">
   <div class="sec-hd">
-    <div class="sec-title"><span class="n">01</span> <span class="dept">自營業務</span> — 損益概覽</div>
+    <div class="sec-title"><span class="n">01</span> <span class="dept">自營業務</span> — 損益概覽 {ft_badge}</div>
     <div class="sec-date">截至 {m['data_date']}・單位：萬元</div>
   </div>
 
   <div class="sd" style="margin-top:0;">損失超限 / 警示</div>
-  <div class="c-row">
-    <div class="cb" style="background:var(--redbg);border:1.5px solid var(--redbd);">
-      <div style="font-size:14px;font-weight:800;font-family:var(--mono);color:var(--red);">{loss_over_cnt}</div>
-      <div style="font-size:14px;color:var(--mid);margin-top:1px;">損失超限</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:9px;">
+    <div class="cb" style="background:var(--redbg);border:1.5px solid var(--redbd);min-width:80px;">
+      <div style="font-size:18px;font-weight:800;font-family:var(--mono);color:var(--red);">{loss_over_cnt}</div>
+      <div style="font-size:12px;color:var(--mid);margin-top:1px;">月損失超限</div>
     </div>
-    <div class="cb" style="background:var(--{'yelbg' if loss_warn_cnt else 'gnbg'});border:1.5px solid var(--{'yelbd' if loss_warn_cnt else 'gnbd'});">
-      <div style="font-size:14px;font-weight:800;font-family:var(--mono);color:var(--{'yel' if loss_warn_cnt else 'grn'});">{loss_warn_cnt}</div>
-      <div style="font-size:14px;color:var(--mid);margin-top:1px;">損失80%提醒</div>
+    <div class="cb" style="background:var(--{'redbg' if y_over_cnt else 'gnbg'});border:1.5px solid var(--{'redbd' if y_over_cnt else 'gnbd'});min-width:80px;">
+      <div style="font-size:18px;font-weight:800;font-family:var(--mono);color:var(--{'red' if y_over_cnt else 'grn'});">{y_over_cnt}</div>
+      <div style="font-size:12px;color:var(--mid);margin-top:1px;">年損失超限</div>
+    </div>
+    <div class="cb" style="background:var(--{'orgbg' if loss_warn_cnt else 'gnbg'});border:1.5px solid var(--{'orgbd' if loss_warn_cnt else 'gnbd'});min-width:80px;">
+      <div style="font-size:18px;font-weight:800;font-family:var(--mono);color:var(--{'org' if loss_warn_cnt else 'grn'});">{loss_warn_cnt}</div>
+      <div style="font-size:12px;color:var(--mid);margin-top:1px;">月損失80%提醒</div>
+    </div>
+    <div class="cb" style="background:var(--{'orgbg' if y_warn_cnt else 'gnbg'});border:1.5px solid var(--{'orgbd' if y_warn_cnt else 'gnbd'});min-width:80px;">
+      <div style="font-size:18px;font-weight:800;font-family:var(--mono);color:var(--{'org' if y_warn_cnt else 'grn'});">{y_warn_cnt}</div>
+      <div style="font-size:12px;color:var(--mid);margin-top:1px;">年損失80%提醒</div>
     </div>
   </div>
   {loss_bars}
 
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:10px;">
     <div class="dept-box">
-      <div class="dept-hd"><span>🏦 投資銀行處</span><span class="b bg">正常</span></div>
+      <div class="dept-hd"><span>🏦 投資銀行處</span></div>
       <table class="tbl">
         {COL_GRP}{TBL_HDR}
         <tbody>{ib_rows}</tbody>
       </table>
     </div>
     <div class="dept-box">
-      <div class="dept-hd"><span>📊 金融交易處</span>{ft_badge}</div>
+      <div class="dept-hd"><span>📊 金融交易處</span></div>
       <div class="sd" style="margin-top:0;">策略部位</div>
       <table class="tbl">
         {COL_GRP}{STR_HDR}
@@ -789,6 +819,6 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
 def save_html(html: str, output_dir: Path, report_date: str) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     date_str = report_date.replace("/", "")
-    path = output_dir / f"風控整合日報_{date_str}.html"
+    path = output_dir / f"風險管理日報_{date_str}.html"
     path.write_text(html, encoding="utf-8")
     return path
