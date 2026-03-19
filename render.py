@@ -152,8 +152,8 @@ def generate_html(data: dict) -> str:
     for r in m["loss_over"]:
         pv = float(r.get("m_pct") or 0) * 100
         loss_bars += f"""<div class="lrow" style="background:var(--redbg);border-color:var(--redbd);">
-          <div style="flex:1;"><div style="font-size:12px;font-weight:700;color:var(--red);">{r['dept']} {r['biz']}</div>
-          <div style="font-size:12px;color:var(--mid);font-family:var(--mono);margin-top:2px;">月損失使用率</div></div>
+          <div style="flex:1;"><div style="font-size:14px;font-weight:700;color:var(--red);">{r['dept']} {r['biz']}</div>
+          <div style="font-size:14px;color:var(--mid);font-family:var(--mono);margin-top:2px;">月損失使用率</div></div>
           <div style="display:flex;align-items:center;gap:7px;flex:1;">
             <div class="pbar"><div class="pbar-fill" style="width:100%;background:var(--red);"></div></div>
             <div class="pbar-pct" style="color:var(--red);">{pv:.1f}%</div>
@@ -162,7 +162,7 @@ def generate_html(data: dict) -> str:
         pv = float(r.get("m_pct") or 0) * 100
         loss_bars += f"""<div class="lrow" style="background:var(--yelbg);border-color:var(--yelbd);">
           <div style="flex:1;"><div style="font-size:12px;font-weight:600;color:var(--yel);">{r['dept']} {r['biz']}</div>
-          <div style="font-size:12px;color:var(--mid);font-family:var(--mono);margin-top:2px;">月損失使用率</div></div>
+          <div style="font-size:14px;color:var(--mid);font-family:var(--mono);margin-top:2px;">月損失使用率</div></div>
           <div style="display:flex;align-items:center;gap:7px;flex:1;">
             <div class="pbar"><div class="pbar-fill" style="width:{min(pv,100):.0f}%;background:#f59e0b;"></div></div>
             <div class="pbar-pct" style="color:var(--yel);">{pv:.1f}%</div>
@@ -179,22 +179,22 @@ def generate_html(data: dict) -> str:
     d3_html = ""
     if d3_alert_list:
         d3_html += """<div style="display:grid;grid-template-columns:60px 1fr 70px 70px 60px;gap:0;margin-top:4px;">
-          <div style="font-size:8px;color:var(--dim);font-family:var(--mono);padding:0 0 4px;border-bottom:1px solid var(--bd);font-weight:600;">股票代號</div>
-          <div style="font-size:8px;color:var(--dim);font-family:var(--mono);padding:0 0 4px;border-bottom:1px solid var(--bd);font-weight:600;">股票名稱</div>
-          <div style="font-size:8px;color:var(--dim);font-family:var(--mono);padding:0 0 4px;border-bottom:1px solid var(--bd);font-weight:600;text-align:right;">年度損失</div>
-          <div style="font-size:8px;color:var(--dim);font-family:var(--mono);padding:0 0 4px;border-bottom:1px solid var(--bd);font-weight:600;text-align:right;">損失率</div>
-          <div style="font-size:8px;color:var(--dim);font-family:var(--mono);padding:0 0 4px;border-bottom:1px solid var(--bd);font-weight:600;text-align:right;">狀態</div>"""
+          <div style="font-size:14px;color:var(--dim);font-family:var(--mono);padding:0 0 4px;border-bottom:1px solid var(--bd);font-weight:600;">股票代號</div>
+          <div style="font-size:14px;color:var(--dim);font-family:var(--mono);padding:0 0 4px;border-bottom:1px solid var(--bd);font-weight:600;">股票名稱</div>
+          <div style="font-size:14px;color:var(--dim);font-family:var(--mono);padding:0 0 4px;border-bottom:1px solid var(--bd);font-weight:600;text-align:right;">年度損失</div>
+          <div style="font-size:14px;color:var(--dim);font-family:var(--mono);padding:0 0 4px;border-bottom:1px solid var(--bd);font-weight:600;text-align:right;">損失率</div>
+          <div style="font-size:14px;color:var(--dim);font-family:var(--mono);padding:0 0 4px;border-bottom:1px solid var(--bd);font-weight:600;text-align:right;">狀態</div>"""
         for r in d3_alert_list:
             dc = "var(--red)" if r.get("status")=="超限" else "#f59e0b"
             d3_html += f"""
-          <div style="padding:4px 0;font-size:10px;font-family:var(--mono);color:var(--acc2);border-bottom:1px solid var(--bd);">{r['code']}</div>
-          <div style="padding:4px 0;font-size:10px;color:var(--mid);border-bottom:1px solid var(--bd);">{r['name']}</div>
-          <div style="padding:4px 0;font-size:10px;font-family:var(--mono);color:{dc};text-align:right;border-bottom:1px solid var(--bd);font-weight:600;">{_wan(r['pnl'])}</div>
-          <div style="padding:4px 0;font-size:10px;font-family:var(--mono);color:{dc};text-align:right;border-bottom:1px solid var(--bd);">{_pct(r['loss_rate'])}</div>
+          <div style="padding:4px 0;font-size:14px;font-family:var(--mono);color:var(--acc2);border-bottom:1px solid var(--bd);">{r['code']}</div>
+          <div style="padding:4px 0;font-size:14px;color:var(--mid);border-bottom:1px solid var(--bd);">{r['name']}</div>
+          <div style="padding:4px 0;font-size:14px;font-family:var(--mono);color:{dc};text-align:right;border-bottom:1px solid var(--bd);font-weight:600;">{_wan(r['pnl'])}</div>
+          <div style="padding:4px 0;font-size:14px;font-family:var(--mono);color:{dc};text-align:right;border-bottom:1px solid var(--bd);">{_pct(r['loss_rate'])}</div>
           <div style="padding:4px 0;text-align:right;border-bottom:1px solid var(--bd);">{_badge(r['status'])}</div>"""
         d3_html += "</div>"
     else:
-        d3_html = '<div style="font-size:10px;color:var(--grn);padding:4px 0;">✅ 無超限或80%提醒</div>'
+        d3_html = '<div style="font-size:14px;color:var(--grn);padding:4px 0;">✅ 無超限或80%提醒</div>'
     
 
     # ── 財管 ─────────────────────────────────────────────────
@@ -262,7 +262,7 @@ def generate_html(data: dict) -> str:
               {_badge(st)}
             </div>"""
     if not wm_alert_rows:
-        wm_alert_rows = '<div style="font-size:10px;color:var(--grn);padding:4px 0;">✅ 各項集中度正常</div>'
+        wm_alert_rows = '<div style="font-size:14px;color:var(--grn);padding:4px 0;">✅ 各項集中度正常</div>'
 
     # ── 經紀 ─────────────────────────────────────────────────
     # A~C / D~E 合計計算
@@ -284,17 +284,17 @@ def generate_html(data: dict) -> str:
     dist_html = f"""
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px;">
       <div style="background:var(--gnbg);border:1px solid var(--gnbd);border-radius:8px;padding:12px 14px;">
-        <div style="font-size:11px;font-weight:700;color:var(--grn);font-family:var(--mono);margin-bottom:8px;">A～C 級（優質）</div>
+        <div style="font-size:14px;font-weight:700;color:var(--grn);font-family:var(--mono);margin-bottom:8px;">A～C 級（優質）</div>
         <div style="font-size:22px;font-weight:800;font-family:var(--mono);color:var(--grn);">{_pct(abc_pct_sum)}</div>
-        <div style="font-size:11px;color:var(--mid);font-family:var(--mono);margin-top:4px;">融資餘額　{_wan(abc_bal_sum)}</div>
-        <div style="font-size:11px;color:var(--mid);font-family:var(--mono);margin-top:2px;">維持率　{abc_maint:.1f}%
+        <div style="font-size:14px;color:var(--mid);font-family:var(--mono);margin-top:4px;">融資餘額　{_wan(abc_bal_sum)}</div>
+        <div style="font-size:14px;color:var(--mid);font-family:var(--mono);margin-top:2px;">維持率　{abc_maint:.1f}%
         <!-- 維持率為各等級加權平均，若需精確值請確認資料來源 --></div>
       </div>
       <div style="background:var(--yelbg);border:1px solid var(--yelbd);border-radius:8px;padding:12px 14px;">
-        <div style="font-size:11px;font-weight:700;color:var(--yel);font-family:var(--mono);margin-bottom:8px;">D～E 級（需關注）</div>
+        <div style="font-size:14px;font-weight:700;color:var(--yel);font-family:var(--mono);margin-bottom:8px;">D～E 級（需關注）</div>
         <div style="font-size:22px;font-weight:800;font-family:var(--mono);color:var(--yel);">{_pct(de_pct_sum)}</div>
-        <div style="font-size:11px;color:var(--mid);font-family:var(--mono);margin-top:4px;">融資餘額　{_wan(de_bal_sum)}</div>
-        <div style="font-size:11px;color:var(--mid);font-family:var(--mono);margin-top:2px;">維持率　{de_maint:.1f}%
+        <div style="font-size:14px;color:var(--mid);font-family:var(--mono);margin-top:4px;">融資餘額　{_wan(de_bal_sum)}</div>
+        <div style="font-size:14px;color:var(--mid);font-family:var(--mono);margin-top:2px;">維持率　{de_maint:.1f}%
         <!-- 維持率為各等級加權平均，若需精確值請確認資料來源 --></div>
       </div>
     </div>"""
@@ -352,12 +352,12 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
 @keyframes blink{{0%,100%{{opacity:1}}50%{{opacity:.25}}}}
 .page{{width:210mm;min-height:297mm;margin:0 auto 20px;background:var(--s1);padding:16px 18px 20px;box-shadow:0 2px 14px rgba(0,0,0,.1);}}
 .hdr{{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid var(--acc);padding-bottom:10px;margin-bottom:14px;}}
-.logo{{width:30px;height:30px;border-radius:6px;background:linear-gradient(135deg,#1565c0,#1e88e5);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-weight:700;font-size:10px;color:#fff;flex-shrink:0;}}
+.logo{{width:30px;height:30px;border-radius:6px;background:linear-gradient(135deg,#1565c0,#1e88e5);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-weight:700;font-size:14px;color:#fff;flex-shrink:0;}}
 .pulse{{width:7px;height:7px;border-radius:50%;background:var(--grn);box-shadow:0 0 4px var(--grn);animation:pulse 2s infinite;}}
 .alert-bar{{background:var(--redbg);border:1px solid var(--redbd);border-left:4px solid var(--red);border-radius:6px;padding:8px 13px;margin-bottom:14px;}}
-.alert-label{{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--red);font-family:var(--mono);margin-bottom:5px;}}
+.alert-label{{font-size:14px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--red);font-family:var(--mono);margin-bottom:5px;}}
 .alert-items{{display:flex;flex-wrap:wrap;gap:5px;}}
-.ai{{font-size:13px;padding:3px 10px;border-radius:4px;border:1px solid;}}
+.ai{{font-size:14px;padding:3px 10px;border-radius:4px;border:1px solid;}}
 .ai.r{{border-color:var(--redbd);color:var(--red);background:#fff;}}
 .ai.y{{border-color:var(--yelbd);color:var(--yel);background:var(--yelbg);}}
 .ai.b{{border-color:#c2d3f0;color:var(--acc2);background:#e8f0fb;}}
@@ -370,51 +370,51 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
 .led.red{{background:var(--red);box-shadow:0 0 6px rgba(198,40,40,.5);animation:blink 1.2s infinite;}}
 .led.yellow{{background:#f59e0b;}}.led.green{{background:var(--grn);}}
 .sec-hd{{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid var(--acc);padding-bottom:8px;margin-bottom:14px;}}
-.sec-title{{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--mid);font-family:var(--mono);display:flex;align-items:center;gap:5px;}}
+.sec-title{{font-size:14px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--mid);font-family:var(--mono);display:flex;align-items:center;gap:5px;}}
 .sec-title .n{{color:var(--acc2);font-size:14px;}}.sec-title .dept{{color:var(--acc);}}
-.sec-date{{font-size:11px;color:var(--dim);font-family:var(--mono);}}
+.sec-date{{font-size:14px;color:var(--dim);font-family:var(--mono);}}
 .tbl{{width:100%;border-collapse:collapse;table-layout:fixed;}}
-.tbl th{{text-align:left;font-size:11px;font-family:var(--mono);color:var(--dim);padding:0 4px 6px;border-bottom:1.5px solid var(--bd);font-weight:600;letter-spacing:.03em;text-transform:uppercase;white-space:nowrap;}}
+.tbl th{{text-align:left;font-size:14px;font-family:var(--mono);color:var(--dim);padding:0 4px 6px;border-bottom:1.5px solid var(--bd);font-weight:600;letter-spacing:.03em;text-transform:uppercase;white-space:nowrap;}}
 .tbl th.r,.tbl td.r{{text-align:right;}}
-.tbl td{{padding:5px 4px;font-size:13px;border-bottom:1px solid var(--bd);font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}}
-.tbl td.l{{color:var(--mid);font-size:12px;font-family:var(--sans);}}
+.tbl td{{padding:5px 4px;font-size:14px;border-bottom:1px solid var(--bd);font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}}
+.tbl td.l{{color:var(--mid);font-size:14px;font-family:var(--sans);}}
 .tbl tr:last-child td{{border-bottom:none;}}
 .tbl tr.subtotal td{{border-top:1px solid var(--bd2);background:var(--s2);font-weight:700;}}
-.tbl tr.grand td{{border-top:2px solid var(--acc);background:#e8f0fb;font-weight:700;font-size:13px;}}
+.tbl tr.grand td{{border-top:2px solid var(--acc);background:#e8f0fb;font-weight:700;font-size:14px;}}
 .tbl tr.alert-row td{{background:var(--redbg);}}
 .up{{color:var(--grn)!important;font-weight:600;}}.dn{{color:var(--red)!important;font-weight:600;}}.yw{{color:var(--yel)!important;font-weight:600;}}
-.b{{display:inline-block;font-size:11px;font-family:var(--mono);font-weight:700;padding:2px 6px;border-radius:3px;}}
+.b{{display:inline-block;font-size:14px;font-family:var(--mono);font-weight:700;padding:2px 6px;border-radius:3px;}}
 .br{{background:var(--redbg);color:var(--red);border:1px solid var(--redbd);}}
 .by{{background:var(--yelbg);color:var(--yel);border:1px solid var(--yelbd);}}
 .bg{{background:var(--gnbg);color:var(--grn);border:1px solid var(--gnbd);}}
 .bb{{background:#e8f0fb;color:var(--acc2);border:1px solid #c2d3f0;}}
 .bx{{background:var(--s2);color:var(--mid);border:1px solid var(--bd);}}
 .bd-{{background:#f5f5f5;color:var(--dim);border:1px solid #ddd;}}
-.sd{{font-size:10px;font-family:var(--mono);color:var(--dim);letter-spacing:.1em;text-transform:uppercase;display:flex;align-items:center;gap:7px;margin:8px 0 6px;font-weight:600;}}
+.sd{{font-size:14px;font-family:var(--mono);color:var(--dim);letter-spacing:.1em;text-transform:uppercase;display:flex;align-items:center;gap:7px;margin:8px 0 6px;font-weight:600;}}
 .sd::after{{content:'';flex:1;height:1px;background:var(--bd);}}
 .dept-box{{background:var(--s2);border:1px solid var(--bd);border-radius:8px;padding:10px 14px;}}
-.dept-hd{{font-size:10px;font-weight:700;color:var(--acc2);font-family:var(--mono);margin-bottom:7px;display:flex;align-items:center;justify-content:space-between;}}
+.dept-hd{{font-size:14px;font-weight:700;color:var(--acc2);font-family:var(--mono);margin-bottom:7px;display:flex;align-items:center;justify-content:space-between;}}
 .c-row{{display:flex;gap:7px;margin-bottom:9px;}}
 .cb{{flex:1;border-radius:7px;padding:8px 10px;text-align:center;}}
 .lrow{{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:6px;margin-bottom:5px;border:1px solid;}}
 .pbar{{height:5px;border-radius:3px;flex:1;background:var(--bd);overflow:hidden;}}
 .pbar-fill{{height:100%;border-radius:3px;}}
-.pbar-pct{{font-size:12px;font-family:var(--mono);font-weight:700;min-width:44px;text-align:right;}}
+.pbar-pct{{font-size:14px;font-family:var(--mono);font-weight:700;min-width:44px;text-align:right;}}
 .d3i{{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--bd);}}
 .d3i:last-of-type{{border-bottom:none;}}
 .dot{{width:5px;height:5px;border-radius:50%;flex-shrink:0;}}
 .conc-row{{display:flex;align-items:center;gap:6px;padding:5px 9px;border-radius:6px;border:1px solid var(--bd);margin-bottom:4px;background:var(--s2);}}
 .conc-row.wr{{background:var(--redbg);border-color:var(--redbd);border-left:3px solid var(--red);}}
 .conc-row.wy{{background:var(--yelbg);border-color:var(--yelbd);border-left:3px solid #f59e0b;}}
-.conc-cat{{font-size:11px;font-family:var(--mono);color:var(--dim);min-width:95px;}}
-.conc-name{{flex:1;font-size:13px;font-weight:600;}}
+.conc-cat{{font-size:14px;font-family:var(--mono);color:var(--dim);min-width:95px;}}
+.conc-name{{flex:1;font-size:14px;font-weight:600;}}
 .mini-bar{{height:4px;background:var(--bd);border-radius:2px;overflow:hidden;width:55px;}}
 .mini-fill{{height:100%;border-radius:2px;}}
-.conc-meta{{font-size:9px;color:var(--dim);font-family:var(--mono);margin-top:2px;}}
+.conc-meta{{font-size:12px;color:var(--dim);font-family:var(--mono);margin-top:2px;}}
 .conc-pct{{font-family:var(--mono);font-size:14px;font-weight:700;min-width:48px;text-align:right;}}
 .md5{{display:grid;grid-template-columns:repeat(5,1fr);gap:5px;margin-bottom:9px;}}
 .mdi{{background:var(--s2);border:1px solid var(--bd);border-radius:6px;padding:7px 4px;text-align:center;}}
-.mg{{font-size:18px;font-weight:800;font-family:var(--mono);}}.mp{{font-size:13px;font-weight:600;font-family:var(--mono);margin-top:1px;}}.mm{{font-size:10px;color:var(--dim);font-family:var(--mono);margin-top:1px;}}
+.mg{{font-size:18px;font-weight:800;font-family:var(--mono);}}.mp{{font-size:14px;font-weight:600;font-family:var(--mono);margin-top:1px;}}.mm{{font-size:12px;color:var(--dim);font-family:var(--mono);margin-top:1px;}}
 .gA{{color:#1a9e6a;}}.gB{{color:var(--acc2);}}.gC{{color:#b45309;}}.gD{{color:#d97706;}}.gE{{color:var(--red);}}
 @media print{{
   body{{background:white;}}
@@ -435,14 +435,14 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
       <div class="logo">RM</div>
       <div>
         <div style="font-size:16px;font-weight:700;">風險管理整合日報</div>
-        <div style="font-size:8.5px;color:var(--dim);font-family:var(--mono);"></div>
+        <div style="font-size:12px;color:var(--dim);font-family:var(--mono);"></div>
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:10px;">
       <div class="pulse"></div>
       <div>
-        <div style="font-family:var(--mono);font-size:11px;color:var(--acc2);font-weight:700;">資料日期：{report_date}</div>
-        <div style="font-size:8.5px;color:var(--dim);text-align:right;font-family:var(--mono);">風險管理部</div>
+        <div style="font-family:var(--mono);font-size:14px;color:var(--acc2);font-weight:700;">資料日期：{report_date}</div>
+        <div style="font-size:12px;color:var(--dim);text-align:right;font-family:var(--mono);">風險管理部</div>
       </div>
     </div>
   </div>
@@ -456,43 +456,43 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
     <div class="sig-card {sig_market}">
       <div class="led {sig_market}"></div>
       <div>
-        <div style="font-size:9px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);">自營業務</div>
-        <div style="font-size:13px;font-weight:700;color:{sm_col};margin-top:2px;">{sm_txt}</div>
-        <div style="font-size:8.5px;color:var(--dim);font-family:var(--mono);margin-top:2px;">{sm_sub}</div>
+        <div style="font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);">自營業務</div>
+        <div style="font-size:14px;font-weight:700;color:{sm_col};margin-top:2px;">{sm_txt}</div>
+        <div style="font-size:12px;color:var(--dim);font-family:var(--mono);margin-top:2px;">{sm_sub}</div>
       </div>
     </div>
     <div class="sig-card {sig_wm}">
       <div class="led {sig_wm}"></div>
       <div>
-        <div style="font-size:9px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);">財管商品業務</div>
-        <div style="font-size:13px;font-weight:700;color:{sw_col};margin-top:2px;">{sw_txt}</div>
-        <div style="font-size:8.5px;color:var(--dim);font-family:var(--mono);margin-top:2px;">{sw_sub}</div>
+        <div style="font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);">財管商品業務</div>
+        <div style="font-size:14px;font-weight:700;color:{sw_col};margin-top:2px;">{sw_txt}</div>
+        <div style="font-size:12px;color:var(--dim);font-family:var(--mono);margin-top:2px;">{sw_sub}</div>
       </div>
     </div>
     <div class="sig-card green">
       <div class="led green"></div>
       <div>
-        <div style="font-size:9px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);">經紀業務</div>
-        <div style="font-size:13px;font-weight:700;color:var(--grn);margin-top:2px;">✓ 正常</div>
-        <div style="font-size:8.5px;color:var(--dim);font-family:var(--mono);margin-top:2px;">{sb_sub}</div>
+        <div style="font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);">經紀業務</div>
+        <div style="font-size:14px;font-weight:700;color:var(--grn);margin-top:2px;">✓ 正常</div>
+        <div style="font-size:12px;color:var(--dim);font-family:var(--mono);margin-top:2px;">{sb_sub}</div>
       </div>
     </div>
   </div>
 
   <!-- ── 自營業務 ── -->
   <div style="background:var(--s2);border:1px solid var(--bd);border-radius:8px;padding:10px 13px;margin-bottom:8px;">
-    <div style="font-size:12px;font-weight:700;color:var(--acc);font-family:var(--mono);letter-spacing:.05em;text-transform:uppercase;margin-bottom:7px;">自營業務</div>
+    <div style="font-size:14px;font-weight:700;color:var(--acc);font-family:var(--mono);letter-spacing:.05em;text-transform:uppercase;margin-bottom:7px;">自營業務</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
       <div>
         <div class="sd" style="margin-top:0;">損失超限 / 警示</div>
         <div class="c-row">
           <div class="cb" style="background:var(--redbg);border:1px solid var(--redbd);">
             <div style="font-size:18px;font-weight:800;font-family:var(--mono);color:var(--red);">{loss_over_cnt}</div>
-            <div style="font-size:8.5px;color:var(--mid);margin-top:1px;">月損失超限</div>
+            <div style="font-size:14px;color:var(--mid);margin-top:1px;">月損失超限</div>
           </div>
           <div class="cb" style="background:var(--{{'yelbg' if loss_warn_cnt else 'gnbg'}});border:1px solid var(--{{'yelbd' if loss_warn_cnt else 'gnbd'}});">
             <div style="font-size:18px;font-weight:800;font-family:var(--mono);color:var(--{{'yel' if loss_warn_cnt else 'grn'}});">{loss_warn_cnt}</div>
-            <div style="font-size:8.5px;color:var(--mid);margin-top:1px;">月損失80%提醒</div>
+            <div style="font-size:14px;color:var(--mid);margin-top:1px;">月損失80%提醒</div>
           </div>
         </div>
         {loss_bars}
@@ -502,11 +502,11 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
         <div class="c-row">
           <div class="cb" style="background:var(--redbg);border:1px solid var(--redbd);">
             <div style="font-size:18px;font-weight:800;font-family:var(--mono);color:var(--red);">{d3_over_cnt}</div>
-            <div style="font-size:8.5px;color:var(--mid);margin-top:1px;">單檔超限</div>
+            <div style="font-size:14px;color:var(--mid);margin-top:1px;">單檔超限</div>
           </div>
           <div class="cb" style="background:var(--{{'yelbg' if d3_warn_cnt else 'gnbg'}});border:1px solid var(--{{'yelbd' if d3_warn_cnt else 'gnbd'}});">
             <div style="font-size:18px;font-weight:800;font-family:var(--mono);color:var(--{{'yel' if d3_warn_cnt else 'grn'}});">{d3_warn_cnt}</div>
-            <div style="font-size:8.5px;color:var(--mid);margin-top:1px;">80%提醒</div>
+            <div style="font-size:14px;color:var(--mid);margin-top:1px;">80%提醒</div>
           </div>
         </div>
         {d3_html}
@@ -516,7 +516,7 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
 
   <!-- ── 財管商品業務 ── -->
   <div style="background:var(--s2);border:1px solid var(--bd);border-radius:8px;padding:10px 13px;margin-bottom:8px;">
-    <div style="font-size:12px;font-weight:700;color:var(--acc);font-family:var(--mono);letter-spacing:.05em;text-transform:uppercase;margin-bottom:7px;">財管商品業務</div>
+    <div style="font-size:14px;font-weight:700;color:var(--acc);font-family:var(--mono);letter-spacing:.05em;text-transform:uppercase;margin-bottom:7px;">財管商品業務</div>
     <div style="display:flex;height:9px;border-radius:4px;overflow:hidden;gap:2px;margin-bottom:8px;">
       <div style="width:{bond_pct:.1f}%;background:#1565c0;border-radius:3px;"></div>
       <div style="width:{fund_pct:.1f}%;background:#0097a7;border-radius:3px;"></div>
@@ -526,25 +526,25 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
       <div style="background:var(--s1);border:1px solid var(--bd);border-radius:6px;padding:7px 10px;display:flex;align-items:center;gap:7px;">
         <div style="width:9px;height:9px;border-radius:2px;background:#1565c0;flex-shrink:0;"></div>
         <div>
-          <div style="font-size:8.5px;color:var(--dim);font-family:var(--mono);">海外債券</div>
+          <div style="font-size:12px;color:var(--dim);font-family:var(--mono);">海外債券</div>
           <div style="font-size:14px;font-weight:700;font-family:var(--mono);margin-top:1px;">{wm_bond_amt:.1f}億</div>
-          <div style="font-size:8.5px;color:var(--dim);font-family:var(--mono);">{bond_pct:.1f}%</div>
+          <div style="font-size:12px;color:var(--dim);font-family:var(--mono);">{bond_pct:.1f}%</div>
         </div>
       </div>
       <div style="background:var(--s1);border:1px solid var(--bd);border-radius:6px;padding:7px 10px;display:flex;align-items:center;gap:7px;">
         <div style="width:9px;height:9px;border-radius:2px;background:#0097a7;flex-shrink:0;"></div>
         <div>
-          <div style="font-size:8.5px;color:var(--dim);font-family:var(--mono);">基金商品</div>
+          <div style="font-size:12px;color:var(--dim);font-family:var(--mono);">基金商品</div>
           <div style="font-size:14px;font-weight:700;font-family:var(--mono);margin-top:1px;">{wm_fund_amt:.1f}億</div>
-          <div style="font-size:8.5px;color:var(--dim);font-family:var(--mono);">{fund_pct:.1f}%</div>
+          <div style="font-size:12px;color:var(--dim);font-family:var(--mono);">{fund_pct:.1f}%</div>
         </div>
       </div>
       <div style="background:var(--s1);border:1px solid var(--bd);border-radius:6px;padding:7px 10px;display:flex;align-items:center;gap:7px;">
         <div style="width:9px;height:9px;border-radius:2px;background:#7c4dff;flex-shrink:0;"></div>
         <div>
-          <div style="font-size:8.5px;color:var(--dim);font-family:var(--mono);">結構型商品</div>
+          <div style="font-size:12px;color:var(--dim);font-family:var(--mono);">結構型商品</div>
           <div style="font-size:14px;font-weight:700;font-family:var(--mono);margin-top:1px;">{wm_struct_amt:.1f}億</div>
-          <div style="font-size:8.5px;color:var(--dim);font-family:var(--mono);">{struct_pct:.1f}%</div>
+          <div style="font-size:12px;color:var(--dim);font-family:var(--mono);">{struct_pct:.1f}%</div>
         </div>
       </div>
     </div>
@@ -554,10 +554,10 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
 
   <!-- ── 經紀業務 ── -->
   <div style="background:var(--s2);border:1px solid var(--bd);border-radius:8px;padding:10px 13px;">
-    <div style="font-size:12px;font-weight:700;color:var(--acc);font-family:var(--mono);letter-spacing:.05em;text-transform:uppercase;margin-bottom:7px;">經紀業務</div>
+    <div style="font-size:14px;font-weight:700;color:var(--acc);font-family:var(--mono);letter-spacing:.05em;text-transform:uppercase;margin-bottom:7px;">經紀業務</div>
     <div class="sd" style="margin-top:0;">融資餘額 A～E 級分佈</div>
     {dist_html}
-    <div style="text-align:center;font-size:9px;color:var(--mid);font-family:var(--mono);background:var(--gnbg);border:1px solid var(--gnbd);border-radius:4px;padding:4px;margin-bottom:8px;">
+    <div style="text-align:center;font-size:12px;color:var(--mid);font-family:var(--mono);background:var(--gnbg);border:1px solid var(--gnbd);border-radius:4px;padding:4px;margin-bottom:8px;">
       ABC合計 <strong style="color:var(--grn);">{_pct(b.get('abc_pct'))}</strong> ｜ 融資餘額 <strong>{_wan(b.get('total_balance',0))}</strong> ｜ 維持率 <strong style="color:var(--grn);">{b.get('total_maint',0):.1f}%</strong>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
@@ -565,13 +565,13 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
         <div class="sd" style="margin-top:0;">款項借貸餘額</div>
         <table style="width:100%;border-collapse:collapse;">
           <thead><tr>
-            <th style="font-size:8px;color:var(--dim);font-family:var(--mono);padding:0 0 4px;border-bottom:1px solid var(--bd);text-align:left;">類型</th>
-            <th style="font-size:8px;color:var(--dim);font-family:var(--mono);padding:0 0 4px;border-bottom:1px solid var(--bd);text-align:right;">未還餘額</th>
+            <th style="font-size:14px;color:var(--dim);font-family:var(--mono);padding:0 0 4px;border-bottom:1px solid var(--bd);text-align:left;">類型</th>
+            <th style="font-size:14px;color:var(--dim);font-family:var(--mono);padding:0 0 4px;border-bottom:1px solid var(--bd);text-align:right;">未還餘額</th>
           </tr></thead>
           <tbody>
-            <tr><td style="padding:4px 0;font-size:10px;border-bottom:1px solid var(--bd);color:var(--mid);">半年型借貸</td><td style="padding:4px 0;font-size:10px;border-bottom:1px solid var(--bd);text-align:right;font-family:var(--mono);">{_wan(loans.get('half_year',0)) if loans.get('half_year',0) else '—'}</td></tr>
-            <tr><td style="padding:4px 0;font-size:10px;border-bottom:1px solid var(--bd);color:var(--mid);">T+5 借款</td><td style="padding:4px 0;font-size:10px;border-bottom:1px solid var(--bd);text-align:right;font-family:var(--mono);">{_wan(loans.get('t5',0)) if loans.get('t5',0) else '—'}</td></tr>
-            <tr><td style="padding:4px 0;font-size:10px;color:var(--mid);">T+30 借款</td><td style="padding:4px 0;font-size:10px;text-align:right;font-family:var(--mono);">{_wan(loans.get('t30',0)) if loans.get('t30',0) else '—'}</td></tr>
+            <tr><td style="padding:4px 0;font-size:14px;border-bottom:1px solid var(--bd);color:var(--mid);">半年型借貸</td><td style="padding:4px 0;font-size:14px;border-bottom:1px solid var(--bd);text-align:right;font-family:var(--mono);">{_wan(loans.get('half_year',0)) if loans.get('half_year',0) else '—'}</td></tr>
+            <tr><td style="padding:4px 0;font-size:14px;border-bottom:1px solid var(--bd);color:var(--mid);">T+5 借款</td><td style="padding:4px 0;font-size:14px;border-bottom:1px solid var(--bd);text-align:right;font-family:var(--mono);">{_wan(loans.get('t5',0)) if loans.get('t5',0) else '—'}</td></tr>
+            <tr><td style="padding:4px 0;font-size:14px;color:var(--mid);">T+30 借款</td><td style="padding:4px 0;font-size:14px;text-align:right;font-family:var(--mono);">{_wan(loans.get('t30',0)) if loans.get('t30',0) else '—'}</td></tr>
           </tbody>
         </table>
       </div>
@@ -579,17 +579,17 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
         <div class="sd" style="margin-top:0;">有價證券借貸</div>
         <table style="width:100%;border-collapse:collapse;">
           <thead><tr>
-            <th style="font-size:8px;color:var(--dim);font-family:var(--mono);padding:0 0 4px;border-bottom:1px solid var(--bd);text-align:left;">來源</th>
-            <th style="font-size:8px;color:var(--dim);font-family:var(--mono);padding:0 0 4px;border-bottom:1px solid var(--bd);text-align:right;">金額</th>
-            <th style="font-size:8px;color:var(--dim);font-family:var(--mono);padding:0 0 4px;border-bottom:1px solid var(--bd);text-align:right;">比重</th>
+            <th style="font-size:14px;color:var(--dim);font-family:var(--mono);padding:0 0 4px;border-bottom:1px solid var(--bd);text-align:left;">來源</th>
+            <th style="font-size:14px;color:var(--dim);font-family:var(--mono);padding:0 0 4px;border-bottom:1px solid var(--bd);text-align:right;">金額</th>
+            <th style="font-size:14px;color:var(--dim);font-family:var(--mono);padding:0 0 4px;border-bottom:1px solid var(--bd);text-align:right;">比重</th>
           </tr></thead>
           <tbody>
-            <tr><td style="padding:4px 0;font-size:10px;border-bottom:1px solid var(--bd);color:var(--mid);">外資借券</td><td style="padding:4px 0;font-size:10px;border-bottom:1px solid var(--bd);text-align:right;font-family:var(--mono);color:var(--acc2);">{_wan(sl.get('foreign',0))}</td><td style="padding:4px 0;font-size:10px;border-bottom:1px solid var(--bd);text-align:right;font-family:var(--mono);">{_pct(sl.get('foreign',0)/sl_total)}</td></tr>
-            <tr><td style="padding:4px 0;font-size:10px;border-bottom:1px solid var(--bd);color:var(--mid);">他家券商</td><td style="padding:4px 0;font-size:10px;border-bottom:1px solid var(--bd);text-align:right;font-family:var(--mono);">{_wan(sl.get('broker',0))}</td><td style="padding:4px 0;font-size:10px;border-bottom:1px solid var(--bd);text-align:right;font-family:var(--mono);">{_pct(sl.get('broker',0)/sl_total)}</td></tr>
-            <tr><td style="padding:4px 0;font-size:10px;color:var(--mid);">自營借券</td><td style="padding:4px 0;font-size:10px;text-align:right;font-family:var(--mono);">{_wan(sl.get('prop',0))}</td><td style="padding:4px 0;font-size:10px;text-align:right;font-family:var(--mono);">{_pct(sl.get('prop',0)/sl_total)}</td></tr>
+            <tr><td style="padding:4px 0;font-size:14px;border-bottom:1px solid var(--bd);color:var(--mid);">外資借券</td><td style="padding:4px 0;font-size:14px;border-bottom:1px solid var(--bd);text-align:right;font-family:var(--mono);color:var(--acc2);">{_wan(sl.get('foreign',0))}</td><td style="padding:4px 0;font-size:14px;border-bottom:1px solid var(--bd);text-align:right;font-family:var(--mono);">{_pct(sl.get('foreign',0)/sl_total)}</td></tr>
+            <tr><td style="padding:4px 0;font-size:14px;border-bottom:1px solid var(--bd);color:var(--mid);">他家券商</td><td style="padding:4px 0;font-size:14px;border-bottom:1px solid var(--bd);text-align:right;font-family:var(--mono);">{_wan(sl.get('broker',0))}</td><td style="padding:4px 0;font-size:14px;border-bottom:1px solid var(--bd);text-align:right;font-family:var(--mono);">{_pct(sl.get('broker',0)/sl_total)}</td></tr>
+            <tr><td style="padding:4px 0;font-size:14px;color:var(--mid);">自營借券</td><td style="padding:4px 0;font-size:14px;text-align:right;font-family:var(--mono);">{_wan(sl.get('prop',0))}</td><td style="padding:4px 0;font-size:14px;text-align:right;font-family:var(--mono);">{_pct(sl.get('prop',0)/sl_total)}</td></tr>
           </tbody>
         </table>
-        <div style="margin-top:4px;font-size:8.5px;color:var(--dim);font-family:var(--mono);text-align:right;">總計 {_wan(sl.get('total',0))}｜費率 {sl.get('rate',0):.2f}%</div>
+        <div style="margin-top:4px;font-size:12px;color:var(--dim);font-family:var(--mono);text-align:right;">總計 {_wan(sl.get('total',0))}｜費率 {sl.get('rate',0):.2f}%</div>
       </div>
     </div>
   </div>
@@ -607,11 +607,11 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
   <div class="c-row">
     <div class="cb" style="background:var(--redbg);border:1.5px solid var(--redbd);">
       <div style="font-size:20px;font-weight:800;font-family:var(--mono);color:var(--red);">{loss_over_cnt}</div>
-      <div style="font-size:9px;color:var(--mid);margin-top:1px;">月損失超限</div>
+      <div style="font-size:14px;color:var(--mid);margin-top:1px;">月損失超限</div>
     </div>
     <div class="cb" style="background:var(--{'yelbg' if loss_warn_cnt else 'gnbg'});border:1.5px solid var(--{'yelbd' if loss_warn_cnt else 'gnbd'});">
       <div style="font-size:20px;font-weight:800;font-family:var(--mono);color:var(--{'yel' if loss_warn_cnt else 'grn'});">{loss_warn_cnt}</div>
-      <div style="font-size:9px;color:var(--mid);margin-top:1px;">月損失80%提醒</div>
+      <div style="font-size:14px;color:var(--mid);margin-top:1px;">月損失80%提醒</div>
     </div>
   </div>
   {loss_bars}
@@ -643,15 +643,15 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
   <div class="c-row">
     <div class="cb" style="background:var(--redbg);border:1.5px solid var(--redbd);">
       <div style="font-size:20px;font-weight:800;font-family:var(--mono);color:var(--red);">{d3_over_cnt}</div>
-      <div style="font-size:9px;color:var(--mid);margin-top:1px;">單檔超限</div>
+      <div style="font-size:14px;color:var(--mid);margin-top:1px;">單檔超限</div>
     </div>
     <div class="cb" style="background:var(--{'yelbg' if d3_warn_cnt else 'gnbg'});border:1.5px solid var(--{'yelbd' if d3_warn_cnt else 'gnbd'});">
       <div style="font-size:20px;font-weight:800;font-family:var(--mono);color:var(--{'yel' if d3_warn_cnt else 'grn'});">{d3_warn_cnt}</div>
-      <div style="font-size:9px;color:var(--mid);margin-top:1px;">80%提醒</div>
+      <div style="font-size:14px;color:var(--mid);margin-top:1px;">80%提醒</div>
     </div>
   </div>
   {d3_html}
-  <div style="margin-top:5px;font-size:8.5px;color:var(--dim);font-family:var(--mono);">超限條件：損失率≥30%且損失≥100萬 | </div>
+  <div style="margin-top:5px;font-size:12px;color:var(--dim);font-family:var(--mono);">超限條件：損失率≥30%且損失≥100萬 | </div>
 </div>
 
 <!-- ═══ 第三頁：02 財管商品業務 ═══ -->
@@ -666,9 +666,9 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
     <div style="width:{struct_pct:.1f}%;background:#7c4dff;border-radius:3px;"></div>
   </div>
   <div style="display:flex;gap:14px;margin-bottom:14px;">
-    <div style="display:flex;align-items:center;gap:4px;font-size:9px;font-family:var(--mono);color:var(--mid);"><div style="width:8px;height:8px;border-radius:2px;background:#1565c0;"></div>海外債券 {bond_pct:.1f}%</div>
-    <div style="display:flex;align-items:center;gap:4px;font-size:9px;font-family:var(--mono);color:var(--mid);"><div style="width:8px;height:8px;border-radius:2px;background:#0097a7;"></div>基金商品 {fund_pct:.1f}%</div>
-    <div style="display:flex;align-items:center;gap:4px;font-size:9px;font-family:var(--mono);color:var(--mid);"><div style="width:8px;height:8px;border-radius:2px;background:#7c4dff;"></div>結構型商品 {struct_pct:.1f}%</div>
+    <div style="display:flex;align-items:center;gap:4px;font-size:12px;font-family:var(--mono);color:var(--mid);"><div style="width:8px;height:8px;border-radius:2px;background:#1565c0;"></div>海外債券 {bond_pct:.1f}%</div>
+    <div style="display:flex;align-items:center;gap:4px;font-size:12px;font-family:var(--mono);color:var(--mid);"><div style="width:8px;height:8px;border-radius:2px;background:#0097a7;"></div>基金商品 {fund_pct:.1f}%</div>
+    <div style="display:flex;align-items:center;gap:4px;font-size:12px;font-family:var(--mono);color:var(--mid);"><div style="width:8px;height:8px;border-radius:2px;background:#7c4dff;"></div>結構型商品 {struct_pct:.1f}%</div>
   </div>
   <div class="sd">債券單一標的集中度</div>
   {_conc_row(conc.get('bond_inv',{}),'投資等級')}
@@ -731,7 +731,7 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
       </tr></thead>
       <tbody>{unlim_html}</tbody>
     </table>
-    <div style="margin-top:4px;font-size:8.5px;color:var(--yel);font-family:var(--mono);">⚠ 維持率低於160%者需留意</div>
+    <div style="margin-top:4px;font-size:12px;color:var(--yel);font-family:var(--mono);">⚠ 維持率低於160%者需留意</div>
   </div>
 
   <!-- 有價證券借貸 + 款項借貸 -->
