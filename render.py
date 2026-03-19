@@ -115,12 +115,21 @@ def generate_html(data: dict) -> str:
     # ── P&L 列產生器 ─────────────────────────────────────────
     def _pnl_row(r, row_cls=""):
         ns = 'style="color:var(--red);font-weight:600;"' if row_cls=="alert-row" else ""
+        mp = float(r.get("m_pct") or 0)
+        yp = float(r.get("y_pct") or 0)
         st = r.get("status","")
+        # 綜合判斷：月超限/年超限/月提醒/年提醒
+        if mp >= 1.0 or yp >= 1.0 or st in ("超限","月損失超限"):
+            effective_st = "超限"
+        elif mp >= 0.8 or yp >= 0.8:
+            effective_st = "80%提醒"
+        else:
+            effective_st = st
         return f"""<tr class="{row_cls}">
           <td class="l" {ns}>{r['dept']}</td>
           <td class="r {_updn(r['mtd'])}">{_wan(r['mtd'])}</td>
           <td class="r {_updn(r['ytd'])}">{_wan(r['ytd'])}</td>
-          <td class="r">{_badge(st) if st else _badge('—')}</td>
+          <td class="r">{_badge(effective_st) if effective_st else _badge('—')}</td>
         </tr>"""
 
     def _total_row(r, cls="subtotal"):
@@ -142,15 +151,27 @@ def generate_html(data: dict) -> str:
       <th>部門</th><th class="r">MTD</th><th class="r">YTD</th><th class="r">狀態</th>
     </tr></thead>"""
 
-    ib_rows    = "".join(_pnl_row(r) for r in m["ib_rows"]) + _total_row(m["ib_total"], "grand")
+    def _ib_row(r):
+        mp = float(r.get("m_pct") or 0)
+        yp = float(r.get("y_pct") or 0)
+        rc = "alert-row" if (r.get("status") in ("超限","月損失超限") or mp >= 1.0 or yp >= 1.0) else ""
+        return _pnl_row(r, rc)
+    ib_rows    = "".join(_ib_row(r) for r in m["ib_rows"]) + _total_row(m["ib_total"], "grand")
     strat_rows = "".join(_pnl_row(r) for r in m["strategy_rows"]) + _total_row(m["strategy_total"])
     trade_rows = ""
     for r in m["trade_rows"]:
-        rc = "alert-row" if r.get("status") in ("超限","月損失超限") else ""
+        mp = float(r.get("m_pct") or 0)
+        yp = float(r.get("y_pct") or 0)
+        rc = "alert-row" if (r.get("status") in ("超限","月損失超限") or mp >= 1.0 or yp >= 1.0) else ""
         trade_rows += _pnl_row(r, rc)
     trade_rows += _total_row(m["trade_total"]) + _total_row(m["ft_total"], "grand")
 
-    ft_badge = _badge('損失超限') if any(r.get("status") in ("超限","損失超限") for r in m["trade_rows"]) else _badge('正常')
+    ft_badge = _badge('超限') if any(
+        r.get("status") in ("超限","月損失超限") or
+        float(r.get("m_pct") or 0) >= 1.0 or
+        float(r.get("y_pct") or 0) >= 1.0
+        for r in m["trade_rows"]
+    ) else _badge('正常')
 
     # ── 損失超限 bars（四類：月超限/年超限/月80%/年80%）────────
     m_loss_over = m.get("m_loss_over", [])
