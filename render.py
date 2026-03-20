@@ -80,12 +80,13 @@ def _conc_row(item, cat_label):
     </div>"""
 
 
-def generate_html(data: dict) -> str:
+def generate_html(data: dict, custom_sections: list[dict] | None = None) -> str:
     m  = data["market"]
     wm = data["wm"]
     b  = data["broker"]
     report_date = data["report_date"]
     alert_items = data.get("alert_items", [])
+    custom_html = render_custom_sections(custom_sections or [])
 
     # ── 計數卡：全部從 Sheet1 m_pct/y_pct 計算（與圓圈同源）──
     _all_pnl_rows = m.get("ib_rows",[]) + m.get("strategy_rows",[]) + m.get("trade_rows",[])
@@ -900,7 +901,97 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
 
 </div>
 
+{custom_html}
+
 </body></html>"""
+
+def _render_text_section(section: dict) -> str:
+    text = section.get("content", {}).get("text", "")
+    paragraphs = [
+        f"<p style='margin:0 0 10px 0;line-height:1.8;'>{p}</p>"
+        for p in text.splitlines() if p.strip()
+    ]
+    inner = "".join(paragraphs) if paragraphs else "<p>—</p>"
+ 
+    return f"""
+<div class="page">
+  <div class="sec-hd">
+    <div class="sec-title">
+      <span class="n">附加</span> <span class="dept">{section['title']}</span>
+    </div>
+    <div class="sec-date"></div>
+  </div>
+  {inner}
+</div>
+"""
+
+
+def _render_bullets_section(section: dict) -> str:
+    items = section.get("content", {}).get("items", [])
+    lis = "".join(f"<li style='margin-bottom:6px;'>{x}</li>" for x in items if str(x).strip())
+    inner = f"<ul style='margin:8px 0 0 20px;'>{lis}</ul>" if lis else "<p>—</p>"
+ 
+    return f"""
+<div class="page">
+  <div class="sec-hd">
+    <div class="sec-title">
+      <span class="n">附加</span> <span class="dept">{section['title']}</span>
+    </div>
+    <div class="sec-date"></div>
+  </div>
+  {inner}
+</div>
+"""
+
+
+def _render_table_section(section: dict) -> str:
+    cols = section.get("content", {}).get("columns", [])
+    rows = section.get("content", {}).get("rows", [])
+ 
+    ths = "".join(f"<th>{c}</th>" for c in cols)
+    trs = ""
+    for row in rows:
+        tds = "".join(f"<td>{v}</td>" for v in row)
+        trs += f"<tr>{tds}</tr>"
+ 
+    table_html = f"""
+<table class="tbl" style="table-layout:auto;">
+  <thead><tr>{ths}</tr></thead>
+  <tbody>{trs}</tbody>
+</table>
+"""
+ 
+    return f"""
+<div class="page">
+  <div class="sec-hd">
+    <div class="sec-title">
+      <span class="n">附加</span> <span class="dept">{section['title']}</span>
+    </div>
+    <div class="sec-date"></div>
+  </div>
+  {table_html}
+</div>
+"""
+
+
+def render_custom_sections(custom_sections: list[dict] | None) -> str:
+    if not custom_sections:
+        return ""
+
+    parts = []
+    for s in custom_sections:
+        if not s.get("enabled", True):
+            continue
+
+        stype = s.get("section_type")
+        if stype == "text":
+            parts.append(_render_text_section(s))
+        elif stype == "bullets":
+            parts.append(_render_bullets_section(s))
+        elif stype == "table":
+            parts.append(_render_table_section(s))
+
+    return "\n".join(parts)
 
 
 def save_html(html: str, output_dir: Path, report_date: str) -> Path:
