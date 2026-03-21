@@ -92,6 +92,17 @@ def generate_html(data: dict, custom_sections: list[dict] | None = None) -> str:
     wm_custom_html = custom_blocks["wm"]
     broker_custom_html = custom_blocks["broker"]
     appendix_custom_html = custom_blocks["appendix"]
+    appendix_block = ""
+    if appendix_custom_html.strip():
+        appendix_block = f"""
+        <section class="a4-page appendix-page">
+          <div class="a4-inner">
+            <div class="appendix-stream">
+              {appendix_custom_html}
+            </div>
+          </div>
+        </section>
+        """
 
     # ── 計數卡：全部從 Sheet1 m_pct/y_pct 計算（與圓圈同源）──
     _all_pnl_rows = m.get("ib_rows",[]) + m.get("strategy_rows",[]) + m.get("trade_rows",[])
@@ -539,6 +550,24 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
   @page portrait{{size:A4 portrait;margin:8mm;}}
   @page landscape{{size:A4 landscape;margin:8mm;}}
 }}
+.a4-page.appendix-page{{
+  width:210mm;
+  min-height:297mm;
+  margin:14px auto;
+  background:#fff;
+  box-shadow:0 2px 10px rgba(0,0,0,.10);
+  page-break-before:always;
+  break-before:page;
+}}
+
+.a4-page.appendix-page .a4-inner{{
+  padding:14mm;
+}}
+
+.appendix-stream .custom-section{{
+  margin-bottom:18px;
+}}
+
 </style>
 </head>
 <body>
@@ -907,7 +936,7 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
   {broker_custom_html}
 </div>
 
-{appendix_custom_html}
+{appendix_block}
 
 </body></html>"""
 
@@ -917,34 +946,30 @@ def _wrap_custom_section(section: dict, inner_html: str) -> str:
     page_break_before = section.get("page_break_before", False)
 
     if layout_mode == "inline":
-        page_break_html = "<div style='page-break-before:always;'></div>" if page_break_before else ""
+        page_break_html = '<div class="page-break"></div>' if page_break_before else ""
         return f"""
-{page_break_html}
-<div style="margin-top:16px;">
-  <div class="sd">{title}</div>
-  {inner_html}
-</div>
-"""
+        {page_break_html}
+        <section class="custom-section">
+          <h3 class="custom-section-title">{title}</h3>
+          {inner_html}
+        </section>
+        """
     else:
         return f"""
-<div class="page">
-  <div class="sec-hd">
-    <div class="sec-title">
-      <span class="n">附加</span> <span class="dept">{title}</span>
-    </div>
-    <div class="sec-date"></div>
-  </div>
-  {inner_html}
-</div>
-"""
+        <section class="custom-section fullpage-section">
+          <h2 class="custom-section-title">附加 {title}</h2>
+          {inner_html}
+        </section>
+        """
 
 def _render_text_section(section: dict) -> str:
     text = section.get("content", {}).get("text", "")
     paragraphs = [
-        f"<p style='margin:0 0 10px 0;line-height:1.8;'>{p}</p>"
-        for p in text.splitlines() if p.strip()
+        f'<p class="custom-text-p">{p}</p>'
+        for p in text.splitlines()
+        if p.strip()
     ]
-    inner = "".join(paragraphs) if paragraphs else "<p>—</p>"
+    inner = "".join(paragraphs) if paragraphs else '<p class="custom-text-p">—</p>'
     return _wrap_custom_section(section, inner)
 
 
@@ -960,17 +985,22 @@ def _render_table_section(section: dict) -> str:
     rows = section.get("content", {}).get("rows", [])
 
     ths = "".join(f"<th>{c}</th>" for c in cols)
+
     trs = ""
     for row in rows:
         tds = "".join(f"<td>{v}</td>" for v in row)
         trs += f"<tr>{tds}</tr>"
 
     inner = f"""
-<table class="tbl" style="table-layout:auto;">
-  <thead><tr>{ths}</tr></thead>
-  <tbody>{trs}</tbody>
-</table>
-"""
+    <table class="custom-table">
+      <thead>
+        <tr>{ths}</tr>
+      </thead>
+      <tbody>
+        {trs}
+      </tbody>
+    </table>
+    """
     return _wrap_custom_section(section, inner)
 
 
