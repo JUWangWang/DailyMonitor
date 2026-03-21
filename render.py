@@ -86,7 +86,12 @@ def generate_html(data: dict, custom_sections: list[dict] | None = None) -> str:
     b  = data["broker"]
     report_date = data["report_date"]
     alert_items = data.get("alert_items", [])
-    custom_html = render_custom_sections(custom_sections or [])
+    custom_blocks = render_custom_sections_by_position(custom_sections or [])
+    summary_custom_html = custom_blocks["summary"]
+    market_custom_html = custom_blocks["market"]
+    wm_custom_html = custom_blocks["wm"]
+    broker_custom_html = custom_blocks["broker"]
+    appendix_custom_html = custom_blocks["appendix"]
 
     # ── 計數卡：全部從 Sheet1 m_pct/y_pct 計算（與圓圈同源）──
     _all_pnl_rows = m.get("ib_rows",[]) + m.get("strategy_rows",[]) + m.get("trade_rows",[])
@@ -714,7 +719,7 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
     <div class="sd">達警示集中度明細</div>
     {wm_alert_rows}
   </div>
-
+  {summary_custom_html}
 </div>
 
 <!-- ═══ 第二頁：01 自營業務損益 + 單檔損失 ═══ -->
@@ -781,7 +786,7 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
       超限條件：興櫃損失≥3,000萬或損失率≥30%且損失≥100萬　｜　上市櫃損失≥3,000萬或損失率≥20%且損失≥100萬
     </div>
   </div>
-
+  {market_custom_html}
 </div>
 
 <!-- ═══ 第三頁：02 財管商品業務 ═══ -->
@@ -820,6 +825,7 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
       <tr><td class="l">境外非投信基金</td><td class="r">{int(ha.get('offshore_count',0))} 人 / {_wan(ha.get('offshore_amount',0))}</td><td class="r"><span class="b {'bg' if not ha.get('offshore_count') else 'br'}">{'無' if not ha.get('offshore_count') else '有'}</span></td></tr>
     </tbody>
   </table>
+  {wm_custom_html}
 </div>
 
 <!-- ═══ 第四頁：03 經紀業務 ═══ -->
@@ -898,12 +904,39 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
       </div>
     </div>
   </div>
-
+  {broker_custom_html}
 </div>
 
-{custom_html}
+{appendix_custom_html}
 
 </body></html>"""
+
+def _wrap_custom_section(section: dict, inner_html: str) -> str:
+    title = section.get("title", "")
+    layout_mode = section.get("layout_mode", "full_page")
+    page_break_before = section.get("page_break_before", False)
+
+    if layout_mode == "inline":
+        page_break_html = "<div style='page-break-before:always;'></div>" if page_break_before else ""
+        return f"""
+{page_break_html}
+<div style="margin-top:16px;">
+  <div class="sd">{title}</div>
+  {inner_html}
+</div>
+"""
+    else:
+        return f"""
+<div class="page">
+  <div class="sec-hd">
+    <div class="sec-title">
+      <span class="n">附加</span> <span class="dept">{title}</span>
+    </div>
+    <div class="sec-date"></div>
+  </div>
+  {inner_html}
+</div>
+"""
 
 def _render_text_section(section: dict) -> str:
     text = section.get("content", {}).get("text", "")
@@ -912,86 +945,67 @@ def _render_text_section(section: dict) -> str:
         for p in text.splitlines() if p.strip()
     ]
     inner = "".join(paragraphs) if paragraphs else "<p>—</p>"
- 
-    return f"""
-<div class="page">
-  <div class="sec-hd">
-    <div class="sec-title">
-      <span class="n">附加</span> <span class="dept">{section['title']}</span>
-    </div>
-    <div class="sec-date"></div>
-  </div>
-  {inner}
-</div>
-"""
+    return _wrap_custom_section(section, inner)
 
 
 def _render_bullets_section(section: dict) -> str:
     items = section.get("content", {}).get("items", [])
     lis = "".join(f"<li style='margin-bottom:6px;'>{x}</li>" for x in items if str(x).strip())
     inner = f"<ul style='margin:8px 0 0 20px;'>{lis}</ul>" if lis else "<p>—</p>"
- 
-    return f"""
-<div class="page">
-  <div class="sec-hd">
-    <div class="sec-title">
-      <span class="n">附加</span> <span class="dept">{section['title']}</span>
-    </div>
-    <div class="sec-date"></div>
-  </div>
-  {inner}
-</div>
-"""
+    return _wrap_custom_section(section, inner)
 
 
 def _render_table_section(section: dict) -> str:
     cols = section.get("content", {}).get("columns", [])
     rows = section.get("content", {}).get("rows", [])
- 
+
     ths = "".join(f"<th>{c}</th>" for c in cols)
     trs = ""
     for row in rows:
         tds = "".join(f"<td>{v}</td>" for v in row)
         trs += f"<tr>{tds}</tr>"
- 
-    table_html = f"""
+
+    inner = f"""
 <table class="tbl" style="table-layout:auto;">
   <thead><tr>{ths}</tr></thead>
   <tbody>{trs}</tbody>
 </table>
 """
- 
-    return f"""
-<div class="page">
-  <div class="sec-hd">
-    <div class="sec-title">
-      <span class="n">附加</span> <span class="dept">{section['title']}</span>
-    </div>
-    <div class="sec-date"></div>
-  </div>
-  {table_html}
-</div>
-"""
+    return _wrap_custom_section(section, inner)
 
 
-def render_custom_sections(custom_sections: list[dict] | None) -> str:
+def render_custom_sections_by_position(custom_sections: list[dict] | None) -> dict:
+    buckets = {
+        "summary": [],
+        "market": [],
+        "wm": [],
+        "broker": [],
+        "appendix": [],
+    }
+
     if not custom_sections:
-        return ""
+        return {k: "" for k in buckets}
 
-    parts = []
     for s in custom_sections:
         if not s.get("enabled", True):
             continue
 
         stype = s.get("section_type")
         if stype == "text":
-            parts.append(_render_text_section(s))
+            html = _render_text_section(s)
         elif stype == "bullets":
-            parts.append(_render_bullets_section(s))
+            html = _render_bullets_section(s)
         elif stype == "table":
-            parts.append(_render_table_section(s))
+            html = _render_table_section(s)
+        else:
+            continue
 
-    return "\n".join(parts)
+        pos = s.get("insert_after", "appendix")
+        if pos not in buckets:
+            pos = "appendix"
+        buckets[pos].append(html)
+
+    return {k: "\n".join(v) for k, v in buckets.items()}
 
 
 def save_html(html: str, output_dir: Path, report_date: str) -> Path:

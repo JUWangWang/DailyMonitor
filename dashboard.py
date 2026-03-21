@@ -916,6 +916,23 @@ elif mode == "🧩 報告區塊編輯器":
     report_date_db = sel_date  # 這裡 date_options 本來就是 YYYY-MM-DD
 
     sections = load_custom_sections(config.DB_PATH, report_date_db)
+    
+    st.markdown("### 選擇既有區塊 / 新增區塊")
+
+    sec_map = {f"{s['display_order']}｜{s['title']}": s for s in sections}
+
+    selected_section_label = st.selectbox(
+        "選擇既有區塊",
+        ["(新增區塊)"] + list(sec_map.keys()),
+        key="edit_custom_section_select"
+    )
+
+    if selected_section_label != "(新增區塊)":
+        editing_section = sec_map[selected_section_label]
+    else:
+        editing_section = None
+
+
 
     st.markdown("### 既有區塊")
     if sections:
@@ -937,21 +954,89 @@ elif mode == "🧩 報告區塊編輯器":
     st.divider()
     st.markdown("### 新增 / 編輯區塊")
 
-    title = st.text_input("區塊標題")
-    section_type = st.selectbox("區塊類型", ["text", "bullets", "table"])
-    display_order = st.number_input("顯示順序", min_value=1, step=10, value=100)
-    enabled = st.checkbox("啟用", value=True)
-    page_break_before = st.checkbox("此區塊另起新頁", value=False)
+    if editing_section:
+        title_default = editing_section["title"]
+        section_type_default = editing_section["section_type"]
+        display_order_default = editing_section["display_order"]
+        enabled_default = editing_section["enabled"]
+        layout_mode_default = editing_section.get("layout_mode", "full_page")
+        page_break_default = editing_section.get("page_break_before", False)
+        insert_after_default = editing_section.get("insert_after", "appendix")
+        section_id = editing_section["section_id"]
+        content_default = editing_section["content"]
+    else:
+        title_default = ""
+        section_type_default = "text"
+        display_order_default = 100
+        enabled_default = True
+        layout_mode_default = "full_page"
+        page_break_default = False
+        insert_after_default = "appendix"
+        section_id = str(uuid.uuid4())[:8]
+        content_default = {}
+
+    title = st.text_input("區塊標題", value=title_default)
+
+    section_type_options = ["text", "bullets", "table"]
+    section_type = st.selectbox(
+        "區塊類型",
+        section_type_options,
+        index=section_type_options.index(section_type_default)
+    )
+
+    display_order = st.number_input(
+        "顯示順序",
+        min_value=1,
+        step=10,
+        value=int(display_order_default)
+    )
+
+    enabled = st.checkbox("納入本次報告", value=enabled_default)
+
+    layout_mode_options = ["full_page", "inline"]
+    layout_mode = st.selectbox(
+        "版面模式",
+        layout_mode_options,
+        index=layout_mode_options.index(layout_mode_default),
+        format_func=lambda x: "獨立頁" if x == "full_page" else "接續顯示"
+    )
+
+    insert_after_options = ["summary", "market", "wm", "broker", "appendix"]
+    insert_after = st.selectbox(
+        "插入位置",
+        insert_after_options,
+        index=insert_after_options.index(insert_after_default),
+        format_func=lambda x: {
+            "summary": "總覽後",
+            "market": "自營後",
+            "wm": "財管後",
+            "broker": "經紀後",
+            "appendix": "附加區"
+        }[x]
+    )
+
+    page_break_before = st.checkbox(
+        "此區塊前強制換頁（僅接續顯示時有意義）",
+        value=page_break_default
+    )
+    
 
     content = {}
 
     if section_type == "text":
-        text_value = st.text_area("內容", height=220, placeholder="請輸入一般說明文字，可分段。")
+        text_value = st.text_area(
+            "內容",
+            value=content_default.get("text", ""),
+            height=220,
+            placeholder="請輸入一般說明文字，可分段。"
+        )
         content = {"text": text_value}
 
     elif section_type == "bullets":
+        bullet_default = "\n".join(content_default.get("items", []))
         bullet_text = st.text_area(
             "條列內容（每行一點）",
+            value=bullet_default,
             height=180,
             placeholder="黃金ETF Vega 使用率偏高\n白銀ETF 波動加劇\n建議提高盤中監控頻率"
         )
@@ -959,12 +1044,22 @@ elif mode == "🧩 報告區塊編輯器":
         content = {"items": items}
 
     elif section_type == "table":
-        columns_text = st.text_input("欄位名稱（以逗號分隔）", value="項目,數值,狀態")
+        default_cols = content_default.get("columns", ["項目", "數值", "狀態"])
+        columns_text = st.text_input(
+            "欄位名稱（以逗號分隔）",
+            value=",".join(default_cols)
+        )
         cols = [c.strip() for c in columns_text.split(",") if c.strip()]
         if not cols:
             cols = ["欄位1", "欄位2"]
+        default_rows = content_default.get("rows", [])
+        if default_rows:
+            default_table_df = pd.DataFrame(default_rows, columns=cols)
+        else:
+            default_table_df = pd.DataFrame(columns=cols)
+
         table_df = st.data_editor(
-            pd.DataFrame(columns=cols),
+            default_table_df,
             num_rows="dynamic",
             use_container_width=True,
             key="custom_table_editor"
@@ -981,16 +1076,21 @@ elif mode == "🧩 報告區塊編輯器":
                 st.error("請輸入區塊標題")
             else:
                 section = {
-                    "section_id": str(uuid.uuid4())[:8],
+                    "section_id": section_id,
                     "title": title.strip(),
                     "section_type": section_type,
                     "content": content,
                     "display_order": int(display_order),
                     "enabled": enabled,
+                    "layout_mode": layout_mode,
                     "page_break_before": page_break_before,
+                    "insert_after": insert_after,
                 }
                 save_custom_section(config.DB_PATH, report_date_db, section)
-                st.success("✅ 已儲存區塊，請重新整理或切換頁面後查看。")
+                if editing_section:
+                    st.success("✅ 已更新區塊")
+                else:
+                    st.success("✅ 已新增區塊")
 
     with col2:
         if sections:

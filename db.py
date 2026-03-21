@@ -80,16 +80,26 @@ def init_db(db_path: Path):
             report_date        TEXT,
             section_id         TEXT,
             title              TEXT,
-            section_type       TEXT,   -- text / bullets / table
+            section_type       TEXT,
             content_json       TEXT,
             display_order      INTEGER DEFAULT 100,
             enabled            INTEGER DEFAULT 1,
+            layout_mode        TEXT DEFAULT 'full_page',
             page_break_before  INTEGER DEFAULT 0,
+            insert_after       TEXT DEFAULT 'appendix',
             created_at         TEXT DEFAULT (datetime('now','localtime')),
             updated_at         TEXT DEFAULT (datetime('now','localtime')),
             PRIMARY KEY (report_date, section_id)
         );
         """)
+         # ⭐補欄位 migration（舊 DB 才會進來）
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(custom_sections)").fetchall()]
+
+        if "layout_mode" not in cols:
+            conn.execute("ALTER TABLE custom_sections ADD COLUMN layout_mode TEXT DEFAULT 'full_page'")
+
+        if "insert_after" not in cols:
+            conn.execute("ALTER TABLE custom_sections ADD COLUMN insert_after TEXT DEFAULT 'appendix'")
     print(f"  OK DB 初始化完成：{db_path}")
 
 
@@ -217,8 +227,8 @@ def save_custom_section(db_path: Path, report_date: str, section: dict):
         conn.execute("""
             INSERT OR REPLACE INTO custom_sections
             (report_date, section_id, title, section_type, content_json,
-             display_order, enabled, page_break_before, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+             display_order, enabled, layout_mode, page_break_before, insert_after, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
         """, (
             report_date,
             section["section_id"],
@@ -227,7 +237,9 @@ def save_custom_section(db_path: Path, report_date: str, section: dict):
             json.dumps(section["content"], ensure_ascii=False),
             section.get("display_order", 100),
             1 if section.get("enabled", True) else 0,
+            section.get("layout_mode", "full_page"),
             1 if section.get("page_break_before", False) else 0,
+            section.get("insert_after", "appendix"),
         ))
 
 # 讀取某日所有區塊
@@ -235,7 +247,7 @@ def load_custom_sections(db_path: Path, report_date: str) -> list[dict]:
     with get_conn(db_path) as conn:
         rows = conn.execute("""
             SELECT section_id, title, section_type, content_json,
-                   display_order, enabled, page_break_before
+                   display_order, enabled, layout_mode, page_break_before, insert_after
             FROM custom_sections
             WHERE report_date=?
             ORDER BY display_order, section_id
@@ -248,7 +260,9 @@ def load_custom_sections(db_path: Path, report_date: str) -> list[dict]:
         "content": json.loads(r[3]),
         "display_order": r[4],
         "enabled": bool(r[5]),
-        "page_break_before": bool(r[6]),
+        "layout_mode": r[6] or "full_page",
+        "page_break_before": bool(r[7]),
+        "insert_after": r[8] or "appendix",
     } for r in rows]
 
 # 刪除區塊
@@ -268,8 +282,8 @@ def copy_custom_sections(db_path: Path, from_date: str, to_date: str):
             conn.execute("""
                 INSERT OR REPLACE INTO custom_sections
                 (report_date, section_id, title, section_type, content_json,
-                 display_order, enabled, page_break_before, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+                 display_order, enabled, layout_mode, page_break_before, insert_after, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
             """, (
                 to_date,
                 s["section_id"],
@@ -278,5 +292,7 @@ def copy_custom_sections(db_path: Path, from_date: str, to_date: str):
                 json.dumps(s["content"], ensure_ascii=False),
                 s["display_order"],
                 1 if s["enabled"] else 0,
-                1 if s["page_break_before"] else 0,
+                s.get("layout_mode", "full_page"),
+                1 if s.get("page_break_before", False) else 0,
+                s.get("insert_after", "appendix"),
             ))
