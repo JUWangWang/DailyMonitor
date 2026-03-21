@@ -550,6 +550,7 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
   @page portrait{{size:A4 portrait;margin:8mm;}}
   @page landscape{{size:A4 landscape;margin:8mm;}}
 }}
+
 .a4-page.appendix-page{{
   width:210mm;
   min-height:297mm;
@@ -566,6 +567,43 @@ body{{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14
 
 .appendix-stream .custom-section{{
   margin-bottom:18px;
+}}
+
+.custom-section-title{{
+  margin: 0 0 8px 0;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #d7deea;
+  color: #6e87a6;
+  font-size: 15px;
+  font-weight: 700;
+}}
+
+.custom-text-p{{
+  margin: 0 0 10px 0;
+  line-height: 1.75;
+  color: #1f2937;
+}}
+
+.custom-table{{
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  background: #fff;
+}}
+
+.custom-table th,
+.custom-table td{{
+  border: 1px solid #d9dee7;
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+  word-break: break-word;
+}}
+
+.custom-table th{{
+  background: #f3f6fb;
+  color: #6e87a6;
+  font-weight: 700;
 }}
 
 </style>
@@ -980,15 +1018,23 @@ def _render_bullets_section(section: dict) -> str:
     return _wrap_custom_section(section, inner)
 
 
+def _cell_to_text(v):
+    if isinstance(v, list):
+        if len(v) == 0:
+            return ""
+        return " / ".join("" if x is None else str(x) for x in v)
+    return "" if v is None else str(v)
+
+
 def _render_table_section(section: dict) -> str:
     cols = section.get("content", {}).get("columns", [])
     rows = section.get("content", {}).get("rows", [])
 
-    ths = "".join(f"<th>{c}</th>" for c in cols)
+    ths = "".join(f"<th>{_cell_to_text(c)}</th>" for c in cols)
 
     trs = ""
     for row in rows:
-        tds = "".join(f"<td>{v}</td>" for v in row)
+        tds = "".join(f"<td>{_cell_to_text(v)}</td>" for v in row)
         trs += f"<tr>{tds}</tr>"
 
     inner = f"""
