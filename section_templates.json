@@ -1,0 +1,42 @@
+[
+  {
+    "template_id": "tpl_text_risk_event",
+    "template_name": "重大作業風險事件｜文字說明",
+    "section_type": "text",
+    "layout_mode": "inline",
+    "insert_after": "appendix",
+    "enabled": true,
+    "page_break_before": false,
+    "default_title": "重大作業風險事件",
+    "content": {
+      "text": "請輸入說明內容"
+    }
+  },
+  {
+    "template_id": "tpl_table_risk_event",
+    "template_name": "重大作業風險事件｜標準表",
+    "section_type": "table",
+    "layout_mode": "inline",
+    "insert_after": "appendix",
+    "enabled": true,
+    "page_break_before": false,
+    "default_title": "重大作業風險事件",
+    "content": {
+      "columns": ["項目", "數值", "狀態"],
+      "rows": [["", "", ""]]
+    }
+  },
+  {
+    "template_id": "tpl_bullets_market",
+    "template_name": "市場異常｜條列",
+    "section_type": "bullets",
+    "layout_mode": "inline",
+    "insert_after": "summary",
+    "enabled": true,
+    "page_break_before": false,
+    "default_title": "市場異常重點",
+    "content": {
+      "items": ["", "", ""]
+    }
+  }
+]
