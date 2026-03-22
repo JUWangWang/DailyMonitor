@@ -17,6 +17,10 @@ import plotly.express as px
 
 import config
 
+import uuid
+import copy
+from db import load_custom_sections, save_custom_section, delete_custom_section
+
 # ── 頁面設定 ────────────────────────────────────────────────
 st.set_page_config(
     page_title="風險管理日報 查詢系統",
@@ -113,13 +117,19 @@ def load_conc_trend(category: str, start: str, end: str):
 def load_broker_trend(start: str, end: str):
     with db_conn() as conn:
         rows = conn.execute("""
-            SELECT report_date, total_maint, abc_pct,
-                   grade_a_pct, grade_b_pct, grade_c_pct, grade_d_pct, grade_e_pct
+            SELECT report_date, total_balance, total_maint, abc_pct,
+                   grade_a_pct, grade_b_pct, grade_c_pct, grade_d_pct, grade_e_pct,
+                   unlim_total_balance, unlim_total_maint, unlim_abc_pct,
+                   unlim_a_pct, unlim_b_pct, unlim_c_pct, unlim_d_pct, unlim_e_pct
             FROM broker_margin
             WHERE report_date BETWEEN ? AND ?
             ORDER BY report_date
         """, (start, end)).fetchall()
-    return pd.DataFrame(rows, columns=["date","total_maint","abc_pct","A","B","C","D","E"])
+    return pd.DataFrame(rows, columns=[
+        "date","total_balance","total_maint","abc_pct","A","B","C","D","E",
+        "unlim_total_balance","unlim_total_maint","unlim_abc_pct",
+        "uA","uB","uC","uD","uE"
+    ])
 
 @st.cache_data(ttl=60)
 def load_alert_events(start: str, end: str):
@@ -132,6 +142,43 @@ def load_alert_events(start: str, end: str):
         """, (start, end)).fetchall()
     return pd.DataFrame(rows, columns=["日期","來源","類型","說明"])
 
+def save_alert_items(db_path, report_date: str, alert_items: list[dict]):
+    conn = sqlite3.connect(str(db_path))
+    try:
+        conn.execute(
+            "UPDATE daily_summary SET alert_items=? WHERE report_date=?",
+            (json.dumps(alert_items, ensure_ascii=False), report_date)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    st.cache_data.clear()
+
+TEMPLATE_PATH = Path("section_templates.json")
+
+def load_section_templates():
+    if not TEMPLATE_PATH.exists():
+        return []
+    try:
+        return json.loads(TEMPLATE_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+
+def save_section_templates(templates):
+    TEMPLATE_PATH.write_text(
+        json.dumps(templates, ensure_ascii=False, indent=2),
+        encoding="utf-8"
+    )
+
+def instantiate_section_from_template(template: dict, display_order: int | None = None):
+    s = copy.deepcopy(template)
+    s.pop("template_id", None)
+    s.pop("template_name", None)
+    s["title"] = s.pop("default_title", s.get("title", "未命名區塊"))
+    s["section_id"] = str(uuid.uuid4())[:8]
+    if display_order is not None:
+        s["display_order"] = display_order
+    return s
 
 # ── 格式工具 ──────────────────────────────────────────────────
 def fmt_wan(v, unit="萬"):
@@ -142,7 +189,7 @@ def fmt_wan(v, unit="萬"):
         s = f"{wan/10000:.2f}億"
     else:
         s = f"{wan:,.0f}{unit}"
-    return ("+" if wan > 0 else "") + s
+    return s
 
 def fmt_pct(v, digits=1):
     if v is None:
@@ -165,6 +212,145 @@ def badge(status):
            "正常":"tag-green"}.get(status, "tag-blue")
     return f'<span class="{cls}">{status or "—"}</span>'
 
+def build_auto_alert_items(data: dict) -> list[dict]:
+    m = data["market"]
+    wm = data["wm"]
+
+    items = []
+    _all_pnl_rows = m.get("ib_rows", []) + m.get("strategy_rows", []) + m.get("trade_rows", [])
+    seq = 1
+
+    for r in _all_pnl_rows:
+        mp = float(r.get("m_pct") or 0)
+        yp = float(r.get("y_pct") or 0)
+        dept = r.get("dept", "")
+
+        if mp >= 1.0:
+            items.append({
+                "id": f"auto_market_m_{seq}",
+                "source": "auto",
+                "category": "market",
+                "text": f"自營 {dept} 月損失超限（{mp*100:.1f}%）",
+                "level": "r",
+                "enabled": True,
+                "sort_order": 10 + seq
+            })
+            seq += 1
+        elif mp >= 0.8:
+            items.append({
+                "id": f"auto_market_m_{seq}",
+                "source": "auto",
+                "category": "market",
+                "text": f"自營 {dept} 月損失80%提醒（{mp*100:.1f}%）",
+                "level": "o",
+                "enabled": True,
+                "sort_order": 10 + seq
+            })
+            seq += 1
+
+        if yp >= 1.0:
+            items.append({
+                "id": f"auto_market_y_{seq}",
+                "source": "auto",
+                "category": "market",
+                "text": f"自營 {dept} 年損失超限（{yp*100:.1f}%）",
+                "level": "r",
+                "enabled": True,
+                "sort_order": 20 + seq
+            })
+            seq += 1
+        elif yp >= 0.8:
+            items.append({
+                "id": f"auto_market_y_{seq}",
+                "source": "auto",
+                "category": "market",
+                "text": f"自營 {dept} 年損失80%提醒（{yp*100:.1f}%）",
+                "level": "o",
+                "enabled": True,
+                "sort_order": 20 + seq
+            })
+            seq += 1
+
+    for r in m.get("d3_over", []):
+        items.append({
+            "id": f'auto_d3_over_{r["code"]}',
+            "source": "auto",
+            "category": "market",
+            "text": f'單檔損失超限 {r["code"]} {r["name"]}（{r["loss_rate"]*100:.1f}%）',
+            "level": "r",
+            "enabled": True,
+            "sort_order": 200
+        })
+
+    for r in m.get("d3_warn", []):
+        items.append({
+            "id": f'auto_d3_warn_{r["code"]}',
+            "source": "auto",
+            "category": "market",
+            "text": f'單檔損失80%提醒 {r["code"]} {r["name"]}（{r["loss_rate"]*100:.1f}%）',
+            "level": "o",
+            "enabled": True,
+            "sort_order": 210
+        })
+
+    for v in wm.get("conc", {}).values():
+        if v.get("status") in ("達L1", "達L2"):
+            items.append({
+                "id": f'auto_wm_{v.get("name","")}',
+                "source": "auto",
+                "category": "wm",
+                "text": f'財管 {v.get("name","")} {v.get("status","")}（{(v.get("pct") or 0)*100:.2f}%）',
+                "level": "o" if v.get("status") == "達L1" else "r",
+                "enabled": True,
+                "sort_order": 300
+            })
+
+    return items
+
+
+def merge_alert_items(data: dict) -> list[dict]:
+    saved_items = data.get("alert_items", []) or []
+    auto_items = build_auto_alert_items(data)
+
+    auto_override_map = {
+        x.get("id"): x for x in saved_items
+        if x.get("source") == "auto" and x.get("id")
+    }
+
+    merged = []
+    for item in auto_items:
+        override = auto_override_map.get(item["id"])
+        if override:
+            item["enabled"] = override.get("enabled", item["enabled"])
+            item["level"] = override.get("level", item["level"])
+            item["sort_order"] = override.get("sort_order", item["sort_order"])
+        merged.append(item)
+
+    for item in saved_items:
+        if item.get("source") == "manual":
+            merged.append(item)
+
+    return sorted(merged, key=lambda x: x.get("sort_order", 9999))
+
+
+def level_label_to_code(label: str) -> str:
+    return {
+        "紅燈": "r",
+        "橙燈": "o",
+        "黃燈": "y",
+        "藍燈": "b",
+        "綠燈": "g",
+    }.get(label, "b")
+
+
+def level_code_to_label(code: str) -> str:
+    return {
+        "r": "紅燈",
+        "o": "橙燈",
+        "y": "黃燈",
+        "b": "藍燈",
+        "g": "綠燈",
+    }.get(code, "藍燈")
 
 # ── 主畫面 ───────────────────────────────────────────────────
 st.title("📊 風險管理日報 查詢系統")
@@ -176,71 +362,72 @@ if not dates:
 
 date_options = [d["date"] for d in dates]
 
+# ── 進入畫面預設設定────────────────────────────────────────────
+def set_active_query():
+    st.session_state.active_group = "query"
+ 
+def set_active_data():
+    st.session_state.active_group = "data"
+ 
+def set_active_report():
+    st.session_state.active_group = "report"
+ 
+def set_active_setting():
+    st.session_state.active_group = "setting"
+
 # ── Sidebar ──────────────────────────────────────────────────
 with st.sidebar:
     st.header("功能選單")
-
-    st.markdown("##### 查詢模式")
-    query_mode = st.radio("查詢", [
-        "📅 單日報告",
-        "⚖️ 雙日比較",
-        "📈 趨勢圖",
-        "🔔 超限事件清單",
-    ], label_visibility="collapsed")
-
+ 
+    # 只保留一個主群組，避免 4 組 radio 同時都有預設值
+    if "main_group" not in st.session_state:
+        st.session_state.main_group = "查詢模式"
+ 
+    main_group = st.radio(
+        "主功能",
+        ["查詢模式", "彙整資料", "報告產出與信件通知", "設定專區"],
+        label_visibility="collapsed",
+        key="main_group",
+    )
+ 
     st.divider()
-    st.markdown("##### 彙整資料")
-    data_mode = st.radio("彙整", [
-        "🔄 資料轉檔",
-    ], label_visibility="collapsed")
-
-    st.divider()
-    st.markdown("##### 報告產出與信件通知")
-    report_mode = st.radio("報告", [
-        "📄 產出報告",
-        "✉️ 呈報信件",
-    ], label_visibility="collapsed")
-
-    st.divider()
-    st.markdown("##### 設定專區")
-    setting_mode = st.radio("設定", [
-        "📁 資料來源路徑",
-        "📁 產出報告路徑",
-        "📧 信件設定",
-    ], label_visibility="collapsed")
-
+ 
+    if main_group == "查詢模式":
+        mode = st.radio(
+            "查詢",
+            ["📅 單日報告", "⚖️ 雙日比較", "📈 趨勢圖", "🔔 超限事件清單"],
+            label_visibility="collapsed",
+            key="query_mode",
+        )
+ 
+    elif main_group == "彙整資料":
+        mode = st.radio(
+            "彙整",
+            ["🔄 資料轉檔"],
+            label_visibility="collapsed",
+            key="data_mode",
+        )
+ 
+    elif main_group == "報告產出與信件通知":
+        mode = st.radio(
+            "報告",
+            ["⚡ 今日重點說明編輯器", "🧩 報告區塊編輯器", "📄 產出報告", "✉️ 呈報信件"],
+            label_visibility="collapsed",
+            key="report_mode",
+        )
+ 
+    else:
+        mode = st.radio(
+            "設定",
+            ["📁 資料來源路徑", "📁 產出報告路徑", "📧 信件設定"],
+            label_visibility="collapsed",
+            key="setting_mode",
+        )
+ 
     st.divider()
     st.caption(f"資料庫共 {len(dates)} 筆報告")
     st.caption(f"最新：{dates[0]['date'] if dates else '—'}")
     st.caption(f"最早：{dates[-1]['date'] if dates else '—'}")
-
-# ── 決定目前啟用的 mode ──────────────────────────────────────
-# 用 session_state 記住最後點選的 radio 群組
-if "active_group" not in st.session_state:
-    st.session_state.active_group = "query"
-
-# 偵測哪個 radio 群組被點選（值有變化）
-_prev_query   = st.session_state.get("_prev_query",   query_mode)
-_prev_data    = st.session_state.get("_prev_data",    data_mode)
-_prev_report  = st.session_state.get("_prev_report",  report_mode)
-_prev_setting = st.session_state.get("_prev_setting", setting_mode)
-
-if query_mode   != _prev_query:   st.session_state.active_group = "query"
-if data_mode    != _prev_data:    st.session_state.active_group = "data"
-if report_mode  != _prev_report:  st.session_state.active_group = "report"
-if setting_mode != _prev_setting: st.session_state.active_group = "setting"
-
-st.session_state["_prev_query"]   = query_mode
-st.session_state["_prev_data"]    = data_mode
-st.session_state["_prev_report"]  = report_mode
-st.session_state["_prev_setting"] = setting_mode
-
-ag = st.session_state.active_group
-mode = (query_mode   if ag == "query"   else
-        data_mode    if ag == "data"    else
-        report_mode  if ag == "report"  else
-        setting_mode)
-
 
 # ════════════════════════════════════════════════════════════
 #  模式一：單日報告
@@ -275,42 +462,90 @@ if mode == "📅 單日報告":
     st.markdown(f"""
     <div style="display:flex;gap:12px;margin:8px 0 16px;align-items:center;">
       <div style="font-size:14px;font-weight:700;color:#4a6080;">資料日期：{sel_date}</div>
+      <div>經紀業務：{level_tag(_sig_broker)}</div>
       <div>自營業務：{level_tag(_sig_market)}</div>
       <div>財管商品：{level_tag(_sig_wm)}</div>
-      <div>經紀業務：{level_tag(_sig_broker)}</div>
     </div>
     """, unsafe_allow_html=True)
 
-    # 今日重點（與 render.py 同源，從 m_pct/y_pct 即時產生）
-    ai_lines = []
-    for r in _all_pnl:
-        mp = float(r.get("m_pct") or 0)
-        yp = float(r.get("y_pct") or 0)
-        dept = r.get("dept","")
-        if mp >= 1.0:  ai_lines.append(("red",    f"🔴 自營 {dept} 月損失超限（{mp*100:.1f}%）"))
-        elif mp >= 0.8: ai_lines.append(("orange", f"🟠 自營 {dept} 月損失80%提醒（{mp*100:.1f}%）"))
-        if yp >= 1.0:  ai_lines.append(("red",    f"🔴 自營 {dept} 年損失超限（{yp*100:.1f}%）"))
-        elif yp >= 0.8: ai_lines.append(("orange", f"🟠 自營 {dept} 年損失80%提醒（{yp*100:.1f}%）"))
-    for r in m.get("d3_over",[]):
-        ai_lines.append(("red",    f"🔴 單檔損失超限 {r['code']} {r['name']}（{r['loss_rate']*100:.1f}%）"))
-    for r in m.get("d3_warn",[]):
-        ai_lines.append(("orange", f"🟠 單檔損失80%提醒 {r['code']} {r['name']}（{r['loss_rate']*100:.1f}%）"))
-    for v in wm.get("conc",{}).values():
-        if v.get("status") in ("達L1","達L2"):
-            ai_lines.append(("orange", f"🟠 財管 {v.get('name','')} {v.get('status','')}（{(v.get('pct') or 0)*100:.2f}%）"))
+    merged_alert_items = merge_alert_items(data)
 
-    if ai_lines:
-        with st.expander("⚡ 今日重點說明", expanded=True):
-            for _, text in ai_lines:
-                st.write(text)
-    else:
-        with st.expander("⚡ 今日重點說明", expanded=False):
+    with st.expander("⚡ 今日重點說明", expanded=True):
+        enabled_items = [x for x in merged_alert_items if x.get("enabled", True)]
+        if enabled_items:
+            for item in enabled_items:
+                tag_html = {
+                    "r": '<span class="tag-red">紅燈</span>',
+                    "o": '<span class="tag-orange">橙燈</span>',
+                    "y": '<span class="tag-yellow">黃燈</span>',
+                    "b": '<span class="tag-blue">藍燈</span>',
+                    "g": '<span class="tag-green">綠燈</span>',
+                }.get(item.get("level", "b"), '<span class="tag-blue">藍燈</span>')
+
+                st.markdown(
+                    f"{tag_html}　{item.get('text','')}",
+                    unsafe_allow_html=True
+                )
+        else:
             st.write("✅ 今日各項指標正常")
 
-    tab1, tab2, tab3, tab4 = st.tabs(["01 自營損益", "02 單檔損失", "03 財管集中度", "04~05 經紀業務"])
+    tab1, tab2, tab3, tab4 = st.tabs(["01 經紀業務", "02 自營損益", "03 單檔損失", "04 財管集中度"])
 
-    # ── Tab1: 自營損益 ────────────────────────────────────────
+    # ── Tab1: 經紀業務 ────────────────────────────────────────
     with tab1:
+        c1, c2, c3 = st.columns(3)
+        c1.metric("整體融資維持率", f"{b['total_maint']:.1f}%")
+        c2.metric("ABC合計", fmt_pct(b["abc_pct"]))
+        c3.metric("融資餘額", fmt_wan(b["total_balance"]))
+
+        c4, c5, c6 = st.columns(3)
+        c4.metric("整體不限用途借款維持率", f"{b.get('unlim_total_maint',0):.1f}%" if b.get('unlim_total_maint') else "—")
+        c5.metric("不限用途 ABC合計", fmt_pct(b.get("unlim_abc_pct")) if b.get("unlim_abc_pct") else "—")
+        c6.metric("不限用途借款餘額", fmt_wan(b.get("unlim_total_balance", 0)) if b.get("unlim_total_balance") else "—")
+
+        st.markdown("**融資 A~E 分佈**")
+        if b["dist_rows"]:
+            dist_df = pd.DataFrame([{
+                "等級": r["grade"],
+                "比重": fmt_pct(r["pct"]),
+                "餘額": fmt_wan(r["balance"]),
+                "維持率": f"{r['maint']:.1f}%",
+            } for r in b["dist_rows"]])
+            st.dataframe(dist_df, hide_index=True, use_container_width=True)
+
+        col_l, col_r = st.columns(2)
+        with col_l:
+            st.markdown("**融資前5大個股**")
+            if b["margin_top5"]:
+                m5_df = pd.DataFrame([{
+                    "代號": r["code"], "名稱": r["name"], "評等": r.get("grade","—"),
+                    "融資(億)": f"{r['balance']/1e8:.2f}",
+                    "維持率": f"{r['maint']:.1f}%",
+                } for r in b["margin_top5"]])
+                st.dataframe(m5_df, hide_index=True, use_container_width=True)
+
+        with col_r:
+            st.markdown("**融券前5大個股**")
+            if b["short_top5"]:
+                s5_df = pd.DataFrame([{
+                    "代號": r["code"], "名稱": r["name"], "評等": r.get("grade","—"),
+                    "擔保金(億)": f"{r['collat']/1e8:.2f}",
+                    "維持率": f"{r['maint']:.1f}%",
+                } for r in b["short_top5"]])
+                st.dataframe(s5_df, hide_index=True, use_container_width=True)
+
+        st.markdown("**不限用途借貸前5大客戶**")
+        if b["unlim_top5"]:
+            u5_df = pd.DataFrame([{
+                "分公司": r.get("branch","—"),
+                "客戶": r["name"],
+                "借款(萬)": f"{r['amount']/10000:,.0f}",
+                "維持率": f"{r['maint']:.1f}%",
+            } for r in b["unlim_top5"]])
+            st.dataframe(u5_df, hide_index=True, use_container_width=True)
+
+    # ── Tab2: 自營損益 ────────────────────────────────────────
+    with tab2:
         col_a, col_b = st.columns(2)
         with col_a:
             st.markdown("**損失超限 / 警示**")
@@ -381,8 +616,8 @@ if mode == "📅 單日報告":
                 })
             st.dataframe(pd.DataFrame(ft_data), hide_index=True, use_container_width=True)
 
-    # ── Tab2: 單檔損失 ────────────────────────────────────────
-    with tab2:
+    # ── Tab3: 單檔損失 ────────────────────────────────────────
+    with tab3:
         c1, c2 = st.columns(2)
         c1.metric("單檔超限", len(m["d3_over"]))
         c2.metric("單檔80%提醒", len(m["d3_warn"]))
@@ -395,8 +630,8 @@ if mode == "📅 單日報告":
             } for r in m["d3_top5"]])
             st.dataframe(d3_df, hide_index=True, use_container_width=True)
 
-    # ── Tab3: 財管集中度 ──────────────────────────────────────
-    with tab3:
+    # ── Tab4: 財管集中度 ──────────────────────────────────────
+    with tab4:
         alloc = wm["alloc"]
         c1, c2, c3 = st.columns(3)
         c1.metric("海外債券", f"{alloc.get('bond',0)*100:.1f}%")
@@ -433,54 +668,6 @@ if mode == "📅 單日報告":
         c3.metric("BB-(含)以下債券", f"{int(ha.get('bb_count',0))} 人")
         c4.metric("境外非投信基金", f"{int(ha.get('offshore_count',0))} 人")
 
-    # ── Tab4: 經紀業務 ────────────────────────────────────────
-    with tab4:
-        c1, c2, c3 = st.columns(3)
-        c1.metric("整體維持率", f"{b['total_maint']:.1f}%")
-        c2.metric("ABC合計", fmt_pct(b["abc_pct"]))
-        c3.metric("融資餘額", fmt_wan(b["total_balance"]))
-
-        st.markdown("**融資 A~E 分佈**")
-        if b["dist_rows"]:
-            dist_df = pd.DataFrame([{
-                "等級": r["grade"],
-                "比重": fmt_pct(r["pct"]),
-                "餘額": fmt_wan(r["balance"]),
-                "維持率": f"{r['maint']:.1f}%",
-            } for r in b["dist_rows"]])
-            st.dataframe(dist_df, hide_index=True, use_container_width=True)
-
-        col_l, col_r = st.columns(2)
-        with col_l:
-            st.markdown("**融資前5大個股**")
-            if b["margin_top5"]:
-                m5_df = pd.DataFrame([{
-                    "代號": r["code"], "名稱": r["name"], "評等": r["grade"],
-                    "融資(億)": f"{r['balance']/1e8:.2f}",
-                    "集中度": fmt_pct(r["conc"]),
-                } for r in b["margin_top5"]])
-                st.dataframe(m5_df, hide_index=True, use_container_width=True)
-
-        with col_r:
-            st.markdown("**融券前5大個股**")
-            if b["short_top5"]:
-                s5_df = pd.DataFrame([{
-                    "代號": r["code"], "名稱": r["name"],
-                    "擔保金(億)": f"{r['collat']/1e8:.2f}",
-                    "占比": fmt_pct(r["pct"]),
-                    "維持率": f"{r['maint']:.1f}%",
-                } for r in b["short_top5"]])
-                st.dataframe(s5_df, hide_index=True, use_container_width=True)
-
-        st.markdown("**不限用途借貸前5大客戶**")
-        if b["unlim_top5"]:
-            u5_df = pd.DataFrame([{
-                "客戶": r["name"],
-                "借款(萬)": f"{r['amount']/10000:,.0f}",
-                "維持率": f"{r['maint']:.1f}%",
-            } for r in b["unlim_top5"]])
-            st.dataframe(u5_df, hide_index=True, use_container_width=True)
-
 
 # ════════════════════════════════════════════════════════════
 #  模式二：雙日比較
@@ -505,6 +692,82 @@ elif mode == "⚖️ 雙日比較":
 
     st.markdown(f"**{date_a}（A）vs {date_b}（B）**")
 
+    # 融資維持率比較
+    st.markdown("#### 融資維持率比較")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric(f"維持率 {date_a}", f"{da['broker']['total_maint']:.1f}%")
+    c2.metric(f"維持率 {date_b}", f"{db_['broker']['total_maint']:.1f}%",
+              delta=f"{db_['broker']['total_maint'] - da['broker']['total_maint']:+.1f}%")
+    c3.metric(f"ABC合計 {date_a}", fmt_pct(da["broker"]["abc_pct"]))
+    c4.metric(f"ABC合計 {date_b}", fmt_pct(db_["broker"]["abc_pct"]),
+              delta=f"{(db_['broker']['abc_pct'] - da['broker']['abc_pct'])*100:+.2f}%")
+
+    # ── 融資前5大個股比較 ──────────────────────────────────────
+    st.markdown("#### 融資前5大個股比較")
+    def _top5_cmp(list_a, list_b, bal_key, bal_unit, bal_fmt):
+        codes_a = {r["code"]: r for r in (list_a or [])}
+        codes_b = {r["code"]: r for r in (list_b or [])}
+        all_codes = list(dict.fromkeys(
+            [r["code"] for r in (list_a or [])] +
+            [r["code"] for r in (list_b or [])]
+        ))
+        rows = []
+        for code in all_codes:
+            ra = codes_a.get(code)
+            rb = codes_b.get(code)
+            name = (ra or rb).get("name", "")
+            if ra and rb:
+                flag = "—"
+            elif rb:
+                flag = "🆕 新增"
+            else:
+                flag = "🗑 刪除"
+            bal_a = bal_fmt(ra[bal_key]) if ra else "—"
+            bal_b = bal_fmt(rb[bal_key]) if rb else "—"
+            if ra and rb:
+                delta_bal = bal_fmt(rb[bal_key] - ra[bal_key])
+            else:
+                delta_bal = "—"
+            maint_a = f"{ra['maint']:.1f}%" if ra else "—"
+            maint_b = f"{rb['maint']:.1f}%" if rb else "—"
+            if ra and rb:
+                delta_maint = f"{rb['maint'] - ra['maint']:+.1f}%"
+            else:
+                delta_maint = "—"
+            rows.append({
+                "代號": code, "名稱": name,
+                f"{bal_unit}({date_a})": bal_a,
+                f"{bal_unit}({date_b})": bal_b,
+                f"{bal_unit}變動": delta_bal,
+                f"維持率({date_a})": maint_a,
+                f"維持率({date_b})": maint_b,
+                "維持率變動": delta_maint,
+                "異動": flag,
+            })
+        return rows
+
+    margin_cmp = _top5_cmp(
+        da["broker"].get("margin_top5"), db_["broker"].get("margin_top5"),
+        "balance", "融資餘額(億)",
+        lambda v: f"{v/1e8:.2f}"
+    )
+    if margin_cmp:
+        st.dataframe(pd.DataFrame(margin_cmp), hide_index=True, use_container_width=True)
+    else:
+        st.info("兩日均無融資前5大資料")
+
+    # ── 融券前5大個股比較 ──────────────────────────────────────
+    st.markdown("#### 融券前5大個股比較")
+    short_cmp = _top5_cmp(
+        da["broker"].get("short_top5"), db_["broker"].get("short_top5"),
+        "collat", "擔保金(億)",
+        lambda v: f"{v/1e8:.2f}"
+    )
+    if short_cmp:
+        st.dataframe(pd.DataFrame(short_cmp), hide_index=True, use_container_width=True)
+    else:
+        st.info("兩日均無融券前5大資料")
+
     # 自營損益比較
     st.markdown("#### 自營損益比較（萬元）")
     rows_a = {r["dept"]: r for r in da["market"]["ib_rows"] + da["market"]["trade_rows"]}
@@ -520,8 +783,8 @@ elif mode == "⚖️ 雙日比較":
         diff = mtd_b - mtd_a
         cmp_data.append({
             "部門": dept,
-            f"MTD {date_a}(萬)": f"{mtd_a:+,.0f}",
-            f"MTD {date_b}(萬)": f"{mtd_b:+,.0f}",
+            f"MTD {date_a}(萬)": f"{mtd_a:,.0f}",
+            f"MTD {date_b}(萬)": f"{mtd_b:,.0f}",
             "變動(萬)": f"{diff:+,.0f}",
         })
     st.dataframe(pd.DataFrame(cmp_data), hide_index=True, use_container_width=True)
@@ -636,7 +899,7 @@ elif mode == "📈 趨勢圖":
 
     col1, col2, col3 = st.columns(3)
     with col1:
-        chart_type = st.selectbox("指標類型", ["自營損益", "財管集中度", "融資維持率"])
+        chart_type = st.selectbox("指標類型", ["經紀業務", "自營損益", "財管集中度"])
     with col2:
         if len(date_options) >= 2:
             start_d = st.selectbox("起始日期", date_options, index=len(date_options)-1)
@@ -648,42 +911,132 @@ elif mode == "📈 趨勢圖":
     if start_d > end_d:
         start_d, end_d = end_d, start_d
 
-    if chart_type == "自營損益":
-        dept_biz_options = {
-            "投資銀行處｜興櫃": ("投資銀行處", " 興櫃(造市、包銷、包銷買入)"),
-            "投資銀行處｜CB/上市櫃": ("投資銀行處", "CB/上市櫃股票"),
-            "金融交易處｜債券部(交易)": ("債券部", "交易部位"),
-            "金融交易處｜權證交易科": ("權證交易科", "交易部位"),
-            "金融交易處｜量化交易部": ("量化交易部", "交易部位"),
-            "金融交易處｜自營部(興櫃)": ("自營部 - 興櫃(自營)", "交易部位"),
-        }
-        sel = st.selectbox("選擇部門", list(dept_biz_options.keys()))
-        dept, biz = dept_biz_options[sel]
-        metric = st.radio("損益類型", ["MTD", "YTD"], horizontal=True)
+    if chart_type == "經紀業務":
+        broker_cat = st.selectbox("選擇類別", ["融資業務", "不限用途業務"])
 
-        df = load_pnl_trend(dept, biz, start_d, end_d)
+        broker_charts = {
+            "融資業務": [
+                "全公司融資餘額趨勢",
+                "全公司融資維持率趨勢",
+                "融資A~E級比重趨勢",
+            ],
+            "不限用途業務": [
+                "全公司不限用途借款餘額趨勢",
+                "全公司不限用途借款維持率趨勢",
+                "不限用途借款擔保品A~E級比重趨勢",
+            ],
+        }
+        broker_chart_sel = st.selectbox("選擇圖表", broker_charts[broker_cat])
+
+        df = load_broker_trend(start_d, end_d)
         if df.empty:
             st.info("該期間無資料")
         else:
-            col_map = {"MTD": "mtd", "YTD": "ytd"}
-            y_col = col_map[metric]
-            df[y_col] = df[y_col].astype(float) / 10000
+            colors_grade = {"A":"#1a9e6a","B":"#1976d2","C":"#b45309","D":"#d97706","E":"#c62828"}
 
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(
-                x=df["date"], y=df[y_col],
-                mode="lines+markers",
-                name=f"{sel} {metric}",
-                line=dict(color="#1976d2", width=2),
-                marker=dict(size=6),
-            ))
-            fig.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.5)
-            fig.update_layout(
-                title=f"{sel} — {metric} 損益趨勢（萬元）",
-                xaxis_title="日期", yaxis_title="萬元",
-                height=400, margin=dict(t=40, b=20),
-            )
-            st.plotly_chart(fig, use_container_width=True)
+            if broker_chart_sel == "全公司融資餘額趨勢":
+                df["bal_yi"] = df["total_balance"].astype(float) / 1e8
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=df["date"], y=df["bal_yi"],
+                    mode="lines+markers", name="融資餘額(億)",
+                    line=dict(color="#1976d2", width=2), marker=dict(size=6)))
+                fig.update_layout(title="全公司融資餘額趨勢", xaxis_title="日期",
+                    yaxis_title="億元", height=400, margin=dict(t=40, b=20))
+                st.plotly_chart(fig, use_container_width=True)
+
+            elif broker_chart_sel == "全公司融資維持率趨勢":
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=df["date"], y=df["total_maint"].astype(float),
+                    mode="lines+markers", name="整體維持率(%)",
+                    line=dict(color="#1976d2", width=2), marker=dict(size=6)))
+                fig.add_hline(y=130, line_dash="dash", line_color="#c62828",
+                    opacity=0.6, annotation_text="追繳線 130%")
+                fig.update_layout(title="全公司融資維持率趨勢", xaxis_title="日期",
+                    yaxis_title="%", height=400, margin=dict(t=40, b=20))
+                st.plotly_chart(fig, use_container_width=True)
+
+            elif broker_chart_sel == "融資A~E級比重趨勢":
+                fig = go.Figure()
+                for g in ["A","B","C","D","E"]:
+                    fig.add_trace(go.Scatter(x=df["date"], y=df[g].astype(float)*100,
+                        mode="lines", name=f"{g}級",
+                        stackgroup="one", line=dict(color=colors_grade[g])))
+                fig.update_layout(title="融資 A~E 等級比重趨勢", xaxis_title="日期",
+                    yaxis_title="%", height=400, margin=dict(t=40, b=20))
+                st.plotly_chart(fig, use_container_width=True)
+
+            elif broker_chart_sel == "全公司不限用途借款餘額趨勢":
+                df["ubal_yi"] = df["unlim_total_balance"].astype(float) / 1e8
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=df["date"], y=df["ubal_yi"],
+                    mode="lines+markers", name="不限用途借款餘額(億)",
+                    line=dict(color="#7c4dff", width=2), marker=dict(size=6)))
+                fig.update_layout(title="全公司不限用途借款餘額趨勢", xaxis_title="日期",
+                    yaxis_title="億元", height=400, margin=dict(t=40, b=20))
+                st.plotly_chart(fig, use_container_width=True)
+
+            elif broker_chart_sel == "全公司不限用途借款維持率趨勢":
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(x=df["date"], y=df["unlim_total_maint"].astype(float),
+                    mode="lines+markers", name="不限用途整體維持率(%)",
+                    line=dict(color="#7c4dff", width=2), marker=dict(size=6)))
+                fig.add_hline(y=130, line_dash="dash", line_color="#c62828",
+                    opacity=0.6, annotation_text="追繳線 130%")
+                fig.update_layout(title="全公司不限用途借款維持率趨勢", xaxis_title="日期",
+                    yaxis_title="%", height=400, margin=dict(t=40, b=20))
+                st.plotly_chart(fig, use_container_width=True)
+
+            elif broker_chart_sel == "不限用途借款擔保品A~E級比重趨勢":
+                fig = go.Figure()
+                for g, col in [("A","uA"),("B","uB"),("C","uC"),("D","uD"),("E","uE")]:
+                    fig.add_trace(go.Scatter(x=df["date"], y=df[col].astype(float)*100,
+                        mode="lines", name=f"{g}級",
+                        stackgroup="one", line=dict(color=colors_grade[g])))
+                fig.update_layout(title="不限用途借款擔保品 A~E 等級比重趨勢",
+                    xaxis_title="日期", yaxis_title="%",
+                    height=400, margin=dict(t=40, b=20))
+                st.plotly_chart(fig, use_container_width=True)
+
+    elif chart_type == "自營損益":
+        # 直接從 DB 讀出所有存在的 dept + biz 組合，避免硬寫字串與實際資料不符
+        with db_conn() as _conn:
+            _pairs = _conn.execute(
+                "SELECT DISTINCT dept, biz FROM market_pnl ORDER BY biz, dept"
+            ).fetchall()
+
+        if not _pairs:
+            st.info("資料庫尚無自營損益資料，請先執行轉資料。")
+        else:
+            # 顯示名稱：「biz | dept」
+            dept_biz_options = {f"{biz_} | {dept_}": (dept_, biz_)
+                                for dept_, biz_ in _pairs}
+            sel = st.selectbox("選擇部門", list(dept_biz_options.keys()))
+            dept, biz = dept_biz_options[sel]
+            metric = st.radio("損益類型", ["MTD", "YTD"], horizontal=True)
+
+            df = load_pnl_trend(dept, biz, start_d, end_d)
+            if df.empty:
+                st.info("該期間無資料")
+            else:
+                col_map = {"MTD": "mtd", "YTD": "ytd"}
+                y_col = col_map[metric]
+                df[y_col] = df[y_col].astype(float) / 10000
+
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(
+                    x=df["date"], y=df[y_col],
+                    mode="lines+markers",
+                    name=f"{sel} {metric}",
+                    line=dict(color="#1976d2", width=2),
+                    marker=dict(size=6),
+                ))
+                fig.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.5)
+                fig.update_layout(
+                    title=f"{sel} — {metric} 損益趨勢（萬元）",
+                    xaxis_title="日期", yaxis_title="萬元",
+                    height=400, margin=dict(t=40, b=20),
+                )
+                st.plotly_chart(fig, use_container_width=True)
 
     elif chart_type == "財管集中度":
         cat_options = {
@@ -728,42 +1081,6 @@ elif mode == "📈 趨勢圖":
             )
             st.plotly_chart(fig, use_container_width=True)
 
-    else:  # 融資維持率
-        df = load_broker_trend(start_d, end_d)
-        if df.empty:
-            st.info("該期間無資料")
-        else:
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(
-                x=df["date"], y=df["total_maint"],
-                mode="lines+markers", name="整體維持率(%)",
-                line=dict(color="#1976d2", width=2),
-            ))
-            fig.add_hline(y=130, line_dash="dash", line_color="#c62828",
-                          opacity=0.6, annotation_text="追繳線 130%")
-            fig.update_layout(
-                title="全公司融資維持率趨勢",
-                xaxis_title="日期", yaxis_title="%",
-                height=400, margin=dict(t=40, b=20),
-            )
-            st.plotly_chart(fig, use_container_width=True)
-
-            # A~E 堆疊面積圖
-            fig2 = go.Figure()
-            colors = {"A":"#1a9e6a","B":"#1976d2","C":"#b45309","D":"#d97706","E":"#c62828"}
-            for g in ["A","B","C","D","E"]:
-                fig2.add_trace(go.Scatter(
-                    x=df["date"], y=df[g].astype(float)*100,
-                    mode="lines", name=f"{g}級",
-                    stackgroup="one",
-                    line=dict(color=colors[g]),
-                ))
-            fig2.update_layout(
-                title="融資 A~E 等級比重趨勢",
-                xaxis_title="日期", yaxis_title="%",
-                height=350, margin=dict(t=40, b=20),
-            )
-            st.plotly_chart(fig2, use_container_width=True)
 
 
 # ════════════════════════════════════════════════════════════
@@ -816,25 +1133,32 @@ elif mode == "🔄 資料轉檔":
     sel_date = st.date_input("選擇資料日期", value=date.today())
     date_str = sel_date.strftime("%Y%m%d")
 
-    # 檢查三個來源檔案是否存在
-    from extract import find_file
+    # 檢查來源檔案是否存在
+    from extract import find_file, find_broker2_file
     file_status = {}
     for label, directory, prefix in [
         ("市場風險（自營）", config.MARKET_DIR, config.MARKET_PREFIX),
         ("財管商品集中度",   config.WM_DIR,     config.WM_PREFIX),
-        ("融資餘額分佈（經紀）", config.BROKER_DIR, config.BROKER_PREFIX),
+        ("經紀業務當日作業（主檔）", config.BROKER_DIR, config.BROKER_PREFIX),
     ]:
         try:
             f = find_file(Path(directory), prefix, sel_date)
-            file_status[label] = ("✅", str(f.name), True)
+            file_status[label] = ("✅", str(f.name), True, False)
         except FileNotFoundError:
-            file_status[label] = ("❌", "找不到檔案", False)
+            file_status[label] = ("❌", "找不到檔案", False, False)
+
+    # 第二個 broker 檔（追繳處分）：選填，找不到只顯示警告不擋路
+    b2 = find_broker2_file(Path(config.BROKER2_DIR), sel_date)
+    if b2:
+        file_status["追繳及處分金額彙總表（選填）"] = ("✅", str(b2.name), True, True)
+    else:
+        file_status["追繳及處分金額彙總表（選填）"] = ("⚠️", "找不到，追繳/處分欄位將顯示 —", True, True)
 
     st.markdown("**檔案狀態檢查：**")
     all_ok = True
-    for label, (icon, fname, ok) in file_status.items():
+    for label, (icon, fname, ok, optional) in file_status.items():
         st.markdown(f"{icon} **{label}**　`{fname}`")
-        if not ok:
+        if not ok and not optional:
             all_ok = False
 
     st.divider()
@@ -875,16 +1199,17 @@ elif mode == "📄 產出報告":
         sel_date = st.selectbox("選擇日期", date_options)
 
         if st.button("▶ 產出 HTML", type="primary"):
-            from db import load_report
+            from db import load_report, load_custom_sections
             from render import generate_html, save_html
 
             data = load_report(config.DB_PATH, sel_date)
+            custom_sections = load_custom_sections(config.DB_PATH, sel_date)
             if not data:
                 st.error("找不到該日資料")
             else:
                 with st.spinner("產出中..."):
                     try:
-                        html = generate_html(data)
+                        html = generate_html(data, custom_sections=custom_sections)
                         out_path = save_html(html, config.OUTPUT_DIR, data["report_date"])
                         st.success(f"✅ 已產出：`{out_path}`")
                         with open(out_path, "r", encoding="utf-8") as f:
@@ -897,7 +1222,349 @@ elif mode == "📄 產出報告":
                         )
                     except Exception as e:
                         st.error(f"❌ 產出失敗：{e}")
+# ════════════════════════════════════════════════════════════
+# ⚡ 今日重點說明編輯器
+# ════════════════════════════════════════════════════════════
+elif mode == "⚡ 今日重點說明編輯器":
+    st.subheader("⚡ 今日重點說明編輯器")
 
+    sel_date = st.selectbox("選擇報告日期", date_options, key="alert_editor_date")
+    data = load_day(sel_date)
+
+    if not data:
+        st.warning("找不到該日資料")
+        st.stop()
+
+    merged_items = merge_alert_items(data)
+
+    st.markdown("### 系統 / 人工重點項目")
+    edited_rows = []
+
+    for idx, item in enumerate(merged_items):
+        with st.container(border=True):
+            c1, c2, c3 = st.columns([1, 1, 5])
+            with c1:
+                enabled = st.checkbox("納入", value=item.get("enabled", True), key=f"alert_enabled_{idx}")
+            with c2:
+                level_label = st.selectbox(
+                    "燈號",
+                    ["紅燈", "橙燈", "黃燈", "藍燈", "綠燈"],
+                    index=["紅燈", "橙燈", "黃燈", "藍燈", "綠燈"].index(level_code_to_label(item.get("level", "b"))),
+                    key=f"alert_level_{idx}"
+                )
+            with c3:
+                if item.get("source") == "manual":
+                    text = st.text_input("內容", value=item.get("text", ""), key=f"alert_text_{idx}")
+                else:
+                    text = item.get("text", "")
+                    st.text_input("內容", value=text, disabled=True, key=f"alert_text_{idx}")
+
+            sort_order = st.number_input("排序", min_value=1, value=int(item.get("sort_order", 9999)), step=10, key=f"alert_sort_{idx}")
+
+            edited_rows.append({
+                "id": item.get("id"),
+                "source": item.get("source", "manual"),
+                "category": item.get("category", "manual"),
+                "text": text,
+                "level": level_label_to_code(level_label),
+                "enabled": enabled,
+                "sort_order": int(sort_order),
+            })
+
+    st.divider()
+    st.markdown("### 人工新增重點")
+    manual_text = st.text_area("新增內容", key="new_manual_alert_text", placeholder="請輸入人工補充說明")
+    manual_level = st.selectbox("燈號", ["紅燈", "橙燈", "黃燈", "藍燈", "綠燈"], key="new_manual_alert_level")
+    manual_sort = st.number_input("排序", min_value=1, value=900, step=10, key="new_manual_alert_sort")
+
+    if st.button("➕ 新增人工重點"):
+        if manual_text.strip():
+            new_item = {
+                "id": f"manual_{uuid.uuid4().hex[:8]}",
+                "source": "manual",
+                "category": "manual",
+                "text": manual_text.strip(),
+                "level": level_label_to_code(manual_level),
+                "enabled": True,
+                "sort_order": int(manual_sort),
+            }
+            current = data.get("alert_items", []) or []
+            current.append(new_item)
+            save_alert_items(config.DB_PATH, sel_date, current)
+            st.success("✅ 已新增人工重點，請重新整理頁面查看。")
+        else:
+            st.warning("請先輸入人工重點內容")
+
+    if st.button("💾 儲存今日重點設定", type="primary"):
+        save_alert_items(config.DB_PATH, sel_date, edited_rows)
+        st.success("✅ 已儲存今日重點說明設定")
+
+# ════════════════════════════════════════════════════════════
+#  🧩 報告區塊編輯器
+# ════════════════════════════════════════════════════════════
+elif mode == "🧩 報告區塊編輯器":
+    st.subheader("🧩 報告區塊編輯器")
+
+    if not date_options:
+        st.warning("資料庫尚無資料，請先執行「🔄 資料轉檔」。")
+        st.stop()
+
+    sel_date = st.selectbox("選擇報告日期", date_options, key="custom_section_date")
+    report_date_db = sel_date  # 這裡 date_options 本來就是 YYYY-MM-DD
+
+    sections = load_custom_sections(config.DB_PATH, report_date_db)
+    
+    st.markdown("### 選擇既有區塊 / 新增區塊")
+
+    sec_map = {f"{s['display_order']}｜{s['title']}": s for s in sections}
+
+    selected_section_label = st.selectbox(
+        "選擇既有區塊",
+        ["(新增區塊)"] + list(sec_map.keys()),
+        key="edit_custom_section_select"
+    )
+
+    if selected_section_label != "(新增區塊)":
+        editing_section = sec_map[selected_section_label]
+    else:
+        editing_section = None
+
+    templates = load_section_templates()
+
+    st.markdown("### 新增來源")
+    create_mode = st.radio(
+        "新增方式",
+        ["空白新增", "從模板新增"],
+        horizontal=True,
+        key="section_create_mode"
+    )
+
+    selected_template = None
+    if not editing_section and create_mode == "從模板新增":
+        if templates:
+            selected_template_name = st.selectbox(
+                "選擇模板",
+                [t["template_name"] for t in templates],
+                key="section_template_select"
+            )
+            selected_template = next(
+                (t for t in templates if t["template_name"] == selected_template_name),
+                None
+            )
+        else:
+            st.info("目前尚無模板，請先建立 section_templates.json 或先從現有區塊另存模板。")
+
+    st.markdown("### 既有區塊")
+    if sections:
+        list_df = pd.DataFrame([
+            {
+                "順序": s["display_order"],
+                "啟用": s["enabled"],
+                "類型": s["section_type"],
+                "標題": s["title"],
+                "新頁": s["page_break_before"],
+                "section_id": s["section_id"],
+            }
+            for s in sections
+        ])
+        st.dataframe(list_df, hide_index=True, use_container_width=True)
+    else:
+        st.info("目前尚無自訂區塊。")
+
+    st.divider()
+    st.markdown("### 新增 / 編輯區塊")
+
+    if editing_section:
+        title_default = editing_section["title"]
+        section_type_default = editing_section["section_type"]
+        display_order_default = editing_section["display_order"]
+        enabled_default = editing_section["enabled"]
+        layout_mode_default = editing_section.get("layout_mode", "full_page")
+        page_break_default = editing_section.get("page_break_before", False)
+        insert_after_default = editing_section.get("insert_after", "appendix")
+        section_id = editing_section["section_id"]
+        content_default = editing_section["content"]
+
+    elif selected_template:
+        new_section = instantiate_section_from_template(selected_template, display_order=100)
+        title_default = new_section["title"]
+        section_type_default = new_section["section_type"]
+        display_order_default = new_section.get("display_order", 100)
+        enabled_default = new_section.get("enabled", True)
+        layout_mode_default = new_section.get("layout_mode", "inline")
+        page_break_default = new_section.get("page_break_before", False)
+        insert_after_default = new_section.get("insert_after", "appendix")
+        section_id = new_section["section_id"]
+        content_default = new_section.get("content", {})
+
+    else:
+        title_default = ""
+        section_type_default = "text"
+        display_order_default = 100
+        enabled_default = True
+        layout_mode_default = "full_page"
+        page_break_default = False
+        insert_after_default = "appendix"
+        section_id = str(uuid.uuid4())[:8]
+        content_default = {}
+
+    title = st.text_input("區塊標題", value=title_default)
+
+    section_type_options = ["text", "bullets", "table"]
+    section_type = st.selectbox(
+        "區塊類型",
+        section_type_options,
+        index=section_type_options.index(section_type_default)
+    )
+
+    display_order = st.number_input(
+        "顯示順序",
+        min_value=1,
+        step=10,
+        value=int(display_order_default)
+    )
+
+    enabled = st.checkbox("納入本次報告", value=enabled_default)
+
+    layout_mode_options = ["full_page", "inline"]
+    layout_mode = st.selectbox(
+        "版面模式",
+        layout_mode_options,
+        index=layout_mode_options.index(layout_mode_default),
+        format_func=lambda x: "獨立頁" if x == "full_page" else "接續顯示"
+    )
+
+    insert_after_options = ["summary", "market", "wm", "broker", "appendix"]
+    insert_after = st.selectbox(
+        "插入位置",
+        insert_after_options,
+        index=insert_after_options.index(insert_after_default),
+        format_func=lambda x: {
+            "summary": "總覽後",
+            "market": "自營後",
+            "wm": "財管後",
+            "broker": "經紀後",
+            "appendix": "附加區"
+        }[x]
+    )
+
+    page_break_before = st.checkbox(
+        "此區塊前強制換頁（僅接續顯示時有意義）",
+        value=page_break_default
+    )
+    
+
+    content = {}
+
+    if section_type == "text":
+        text_value = st.text_area(
+            "內容",
+            value=content_default.get("text", ""),
+            height=220,
+            placeholder="請輸入一般說明文字，可分段。"
+        )
+        content = {"text": text_value}
+
+    elif section_type == "bullets":
+        bullet_default = "\n".join(content_default.get("items", []))
+        bullet_text = st.text_area(
+            "條列內容（每行一點）",
+            value=bullet_default,
+            height=180,
+            placeholder="黃金ETF Vega 使用率偏高\n白銀ETF 波動加劇\n建議提高盤中監控頻率"
+        )
+        items = [x.strip() for x in bullet_text.splitlines() if x.strip()]
+        content = {"items": items}
+
+    elif section_type == "table":
+        default_cols = content_default.get("columns", ["項目", "數值", "狀態"])
+        columns_text = st.text_input(
+            "欄位名稱（以逗號分隔）",
+            value=",".join(default_cols)
+        )
+        cols = [c.strip() for c in columns_text.split(",") if c.strip()]
+        if not cols:
+            cols = ["欄位1", "欄位2"]
+        default_rows = content_default.get("rows", [])
+        if default_rows:
+            default_table_df = pd.DataFrame(default_rows, columns=cols)
+        else:
+            default_table_df = pd.DataFrame(columns=cols)
+
+        table_df = st.data_editor(
+            default_table_df,
+            num_rows="dynamic",
+            use_container_width=True,
+            key="custom_table_editor"
+        )
+        content = {
+            "columns": cols,
+            "rows": table_df.fillna("").values.tolist()
+        }
+
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("💾 儲存區塊", type="primary"):
+            if not title.strip():
+                st.error("請輸入區塊標題")
+            else:
+                section = {
+                    "section_id": section_id,
+                    "title": title.strip(),
+                    "section_type": section_type,
+                    "content": content,
+                    "display_order": int(display_order),
+                    "enabled": enabled,
+                    "layout_mode": layout_mode,
+                    "page_break_before": page_break_before,
+                    "insert_after": insert_after,
+                }
+                save_custom_section(config.DB_PATH, report_date_db, section)
+                if editing_section:
+                    st.success("✅ 已更新區塊")
+                else:
+                    st.success("✅ 已新增區塊")
+
+    with col2:
+        if sections:
+            del_target = st.selectbox(
+                "選擇要刪除的區塊",
+                options=sections,
+                format_func=lambda s: f"{s['display_order']}｜{s['title']}",
+                key="delete_custom_section_target"
+            )
+            if st.button("🗑 刪除選取區塊"):
+                delete_custom_section(config.DB_PATH, report_date_db, del_target["section_id"])
+                st.success("✅ 已刪除區塊，請重新整理或切換頁面後查看。")
+
+    st.divider()
+    st.markdown("### 模板功能")
+
+    template_name = st.text_input(
+        "另存模板名稱",
+        value=f"{title.strip() or '新模板'}｜{section_type}",
+        key="save_template_name"
+    )
+
+    if st.button("📌 另存為模板"):
+        if not title.strip():
+            st.error("請先輸入區塊標題後再存成模板")
+        else:
+            templates = load_section_templates()
+            template_obj = {
+                "template_id": f"tpl_{uuid.uuid4().hex[:8]}",
+                "template_name": template_name.strip(),
+                "section_type": section_type,
+                "layout_mode": layout_mode,
+                "insert_after": insert_after,
+                "enabled": enabled,
+                "page_break_before": page_break_before,
+                "default_title": title.strip(),
+                "content": content,
+            }
+            templates.append(template_obj)
+            save_section_templates(templates)
+            st.success("✅ 已另存為模板")
 
 # ════════════════════════════════════════════════════════════
 #  ✉️ 呈報信件
@@ -982,12 +1649,13 @@ elif mode == "📁 資料來源路徑":
     st.subheader("📁 資料來源路徑設定")
     st.info("修改後請點「💾 儲存」，系統會寫入 config.py 並立即生效（下次執行轉檔時套用）。")
 
-    broker_dir = st.text_input("經紀業務資料夾（BROKER_DIR）", value=str(config.BROKER_DIR))
-    market_dir = st.text_input("市場風險資料夾（MARKET_DIR）", value=str(config.MARKET_DIR))
-    wm_dir     = st.text_input("財管商品資料夾（WM_DIR）",     value=str(config.WM_DIR))
+    broker_dir  = st.text_input("經紀業務資料夾（BROKER_DIR）— 主檔 xlsb",  value=str(config.BROKER_DIR))
+    broker2_dir = st.text_input("追繳處分資料夾（BROKER2_DIR）— 彙總表 xls", value=str(getattr(config, "BROKER2_DIR", config.BROKER_DIR)))
+    market_dir  = st.text_input("市場風險資料夾（MARKET_DIR）", value=str(config.MARKET_DIR))
+    wm_dir      = st.text_input("財管商品資料夾（WM_DIR）",     value=str(config.WM_DIR))
 
     col1, col2, col3 = st.columns(3)
-    for label, path_str in [("經紀", broker_dir), ("市場", market_dir), ("財管", wm_dir)]:
+    for label, path_str in [("經紀主檔", broker_dir), ("追繳處分", broker2_dir), ("市場", market_dir), ("財管", wm_dir)]:
         p = Path(path_str)
         if p.exists():
             st.markdown(f"✅ `{label}` 路徑存在")
@@ -999,9 +1667,10 @@ elif mode == "📁 資料來源路徑":
             cfg_path = Path("config.py")
             txt = cfg_path.read_text(encoding="utf-8")
             import re
-            txt = re.sub(r'BROKER_DIR\s*=\s*Path\([^\)]+\)', f'BROKER_DIR   = Path(r"{broker_dir}")', txt)
-            txt = re.sub(r'MARKET_DIR\s*=\s*Path\([^\)]+\)', f'MARKET_DIR   = Path(r"{market_dir}")', txt)
-            txt = re.sub(r'WM_DIR\s*=\s*Path\([^\)]+\)',     f'WM_DIR       = Path(r"{wm_dir}")',     txt)
+            txt = re.sub(r'BROKER_DIR\s*=\s*Path\([^\)]+\)',  f'BROKER_DIR   = Path(r"{broker_dir}")',  txt)
+            txt = re.sub(r'BROKER2_DIR\s*=\s*Path\([^\)]+\)', f'BROKER2_DIR  = Path(r"{broker2_dir}")', txt)
+            txt = re.sub(r'MARKET_DIR\s*=\s*Path\([^\)]+\)',  f'MARKET_DIR   = Path(r"{market_dir}")',  txt)
+            txt = re.sub(r'WM_DIR\s*=\s*Path\([^\)]+\)',      f'WM_DIR       = Path(r"{wm_dir}")',      txt)
             cfg_path.write_text(txt, encoding="utf-8")
             st.success("✅ 已儲存，請重新整理頁面套用新設定。")
         except Exception as e:

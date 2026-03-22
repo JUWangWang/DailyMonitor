@@ -7,18 +7,20 @@ from pathlib import Path
 
 # ── 來源 Excel 資料夾 ────────────────────────────────────────
 # 開發環境
-BROKER_DIR   = Path(r"\\172.21.131.92\風險管理部\88.共用\01.長期使用\JU\Git\02.DailyReport\01.經紀")   # 融資餘額分佈
-MARKET_DIR   = Path(r"\\172.21.131.92\風險管理部\88.共用\01.長期使用\JU\Git\02.DailyReport\02.市場")   # 風險管理摘要說明
-WM_DIR       = Path(r"\\172.21.131.92\風險管理部\88.共用\01.長期使用\JU\Git\02.DailyReport\03.財管")   # 財管商品集中度
+BROKER_DIR   = Path(r"D:\Python\DailyReport\01.經紀")   # 經紀業務當日作業 (xlsb)
+BROKER2_DIR  = Path(r"D:\Python\DailyReport\01.經紀")   # 追繳及處分金額彙總表 (xls)
+MARKET_DIR   = Path(r"D:\Python\DailyReport\02.市場")   # 風險管理摘要說明
+WM_DIR       = Path(r"D:\Python\DailyReport\03.財管")   # 財管商品集中度
 
 
 # ── 檔名前綴（底線前的部分）────────────────────────────────
-BROKER_PREFIX = "融資餘額分佈"
-MARKET_PREFIX = "風險管理摘要說明"
-WM_PREFIX     = "財管商品集中度管理報表"
+BROKER_PREFIX  = "經紀業務當日作業"                      # 搭配 _YYYYMMDD.xlsb
+BROKER2_PREFIX = "富邦證券追繳及處分金額彙總表"           # 搭配 glob 搜尋
+MARKET_PREFIX  = "風險管理摘要說明"
+WM_PREFIX      = "財管商品集中度管理報表"
 
 # ── 輸出路徑 ─────────────────────────────────────────────────
-BASE_DIR    = Path(r"\\172.21.131.92\風險管理部\88.共用\01.長期使用\JU\Git\02.DailyReport")
+BASE_DIR    = Path(r"D:\Python\DailyReport")
 OUTPUT_DIR  = BASE_DIR / "output"     # HTML 每天存這
 DB_PATH     = BASE_DIR / "風控日報.db"
 
@@ -28,7 +30,6 @@ REPORT_TITLE = "風險管理整合日報"
 DEPT_NAME    = "風險管理部"
 
 # ── 收件人名單 ────────────────────────────────────────────────
-# 寄信時使用，可隨時新增/移除
 EMAIL_TO = [
     "chiehyu.wang@fubon.com",
     "chiehyu.wang@fubon.com",
@@ -41,4 +42,4 @@ EMAIL_CC = [
 EMAIL_FROM = ""   # 留空 = 用 Outlook 預設帳號
 
 # 信件主旨格式（{date} 會自動帶入報告日期）
-EMAIL_SUBJECT = "【風控整合日報】{date}"
+EMAIL_SUBJECT = "【風險管理日報】{date}"

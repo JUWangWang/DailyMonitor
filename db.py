@@ -65,17 +65,60 @@ def init_db(db_path: Path):
 
         -- 融資維持率（方便趨勢圖）
         CREATE TABLE IF NOT EXISTS broker_margin (
-            report_date   TEXT PRIMARY KEY,
-            total_balance REAL,
-            total_maint   REAL,
-            abc_pct       REAL,
-            grade_a_pct   REAL,
-            grade_b_pct   REAL,
-            grade_c_pct   REAL,
-            grade_d_pct   REAL,
-            grade_e_pct   REAL
+            report_date        TEXT PRIMARY KEY,
+            total_balance      REAL,
+            total_maint        REAL,
+            abc_pct            REAL,
+            grade_a_pct        REAL,
+            grade_b_pct        REAL,
+            grade_c_pct        REAL,
+            grade_d_pct        REAL,
+            grade_e_pct        REAL,
+            unlim_total_balance REAL,
+            unlim_total_maint   REAL,
+            unlim_abc_pct       REAL,
+            unlim_a_pct         REAL,
+            unlim_b_pct         REAL,
+            unlim_c_pct         REAL,
+            unlim_d_pct         REAL,
+            unlim_e_pct         REAL
+        );
+
+        CREATE TABLE IF NOT EXISTS custom_sections (
+            report_date        TEXT,
+            section_id         TEXT,
+            title              TEXT,
+            section_type       TEXT,
+            content_json       TEXT,
+            display_order      INTEGER DEFAULT 100,
+            enabled            INTEGER DEFAULT 1,
+            layout_mode        TEXT DEFAULT 'full_page',
+            page_break_before  INTEGER DEFAULT 0,
+            insert_after       TEXT DEFAULT 'appendix',
+            created_at         TEXT DEFAULT (datetime('now','localtime')),
+            updated_at         TEXT DEFAULT (datetime('now','localtime')),
+            PRIMARY KEY (report_date, section_id)
         );
         """)
+         # ⭐補欄位 migration（舊 DB 才會進來）
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(custom_sections)").fetchall()]
+
+        if "layout_mode" not in cols:
+            conn.execute("ALTER TABLE custom_sections ADD COLUMN layout_mode TEXT DEFAULT 'full_page'")
+
+        if "insert_after" not in cols:
+            conn.execute("ALTER TABLE custom_sections ADD COLUMN insert_after TEXT DEFAULT 'appendix'")
+
+        # ⭐ broker_margin 新增不限用途欄位 migration
+        bm_cols = [r[1] for r in conn.execute("PRAGMA table_info(broker_margin)").fetchall()]
+        for col, default in [
+            ("unlim_total_balance", "0"), ("unlim_total_maint", "0"),
+            ("unlim_abc_pct", "0"),
+            ("unlim_a_pct", "0"), ("unlim_b_pct", "0"), ("unlim_c_pct", "0"),
+            ("unlim_d_pct", "0"), ("unlim_e_pct", "0"),
+        ]:
+            if col not in bm_cols:
+                conn.execute(f"ALTER TABLE broker_margin ADD COLUMN {col} REAL DEFAULT {default}")
     print(f"  OK DB 初始化完成：{db_path}")
 
 
@@ -152,19 +195,30 @@ def save_report(db_path: Path, data: dict, overwrite: bool = True):
             """, (report_date, "market", item["type"], "", item["text"], 0, ""))
 
         # broker_margin
-        grades = {r["grade"]: r for r in broker["dist_rows"]}
+        grades  = {r["grade"]: r for r in broker["dist_rows"]}
+        ugrades = {r["grade"]: r for r in broker.get("unlim_dist_rows", [])}
         conn.execute("""
             INSERT OR REPLACE INTO broker_margin
             (report_date, total_balance, total_maint, abc_pct,
-             grade_a_pct, grade_b_pct, grade_c_pct, grade_d_pct, grade_e_pct)
-            VALUES (?,?,?,?,?,?,?,?,?)
+             grade_a_pct, grade_b_pct, grade_c_pct, grade_d_pct, grade_e_pct,
+             unlim_total_balance, unlim_total_maint, unlim_abc_pct,
+             unlim_a_pct, unlim_b_pct, unlim_c_pct, unlim_d_pct, unlim_e_pct)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (report_date,
               broker["total_balance"], broker["total_maint"], broker["abc_pct"],
               (grades.get("A") or {}).get("pct", 0),
               (grades.get("B") or {}).get("pct", 0),
               (grades.get("C") or {}).get("pct", 0),
               (grades.get("D") or {}).get("pct", 0),
-              (grades.get("E") or {}).get("pct", 0)))
+              (grades.get("E") or {}).get("pct", 0),
+              broker.get("unlim_total_balance", 0),
+              broker.get("unlim_total_maint", 0),
+              broker.get("unlim_abc_pct", 0),
+              (ugrades.get("A") or {}).get("pct", 0),
+              (ugrades.get("B") or {}).get("pct", 0),
+              (ugrades.get("C") or {}).get("pct", 0),
+              (ugrades.get("D") or {}).get("pct", 0),
+              (ugrades.get("E") or {}).get("pct", 0)))
 
     print(f"  OK DB 儲存完成：{report_date}（燈號：{alert_level}）")
     return alert_level, alert_items
@@ -196,3 +250,79 @@ def list_dates(db_path: Path) -> list[dict]:
             "SELECT report_date, alert_level, alert_items FROM daily_summary ORDER BY report_date DESC"
         ).fetchall()
     return [{"date": r[0], "level": r[1], "alerts": json.loads(r[2])} for r in rows]
+
+# 儲存區塊
+def save_custom_section(db_path: Path, report_date: str, section: dict):
+    with get_conn(db_path) as conn:
+        conn.execute("""
+            INSERT OR REPLACE INTO custom_sections
+            (report_date, section_id, title, section_type, content_json,
+             display_order, enabled, layout_mode, page_break_before, insert_after, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+        """, (
+            report_date,
+            section["section_id"],
+            section["title"],
+            section["section_type"],
+            json.dumps(section["content"], ensure_ascii=False),
+            section.get("display_order", 100),
+            1 if section.get("enabled", True) else 0,
+            section.get("layout_mode", "full_page"),
+            1 if section.get("page_break_before", False) else 0,
+            section.get("insert_after", "appendix"),
+        ))
+
+# 讀取某日所有區塊
+def load_custom_sections(db_path: Path, report_date: str) -> list[dict]:
+    with get_conn(db_path) as conn:
+        rows = conn.execute("""
+            SELECT section_id, title, section_type, content_json,
+                   display_order, enabled, layout_mode, page_break_before, insert_after
+            FROM custom_sections
+            WHERE report_date=?
+            ORDER BY display_order, section_id
+        """, (report_date,)).fetchall()
+
+    return [{
+        "section_id": r[0],
+        "title": r[1],
+        "section_type": r[2],
+        "content": json.loads(r[3]),
+        "display_order": r[4],
+        "enabled": bool(r[5]),
+        "layout_mode": r[6] or "full_page",
+        "page_break_before": bool(r[7]),
+        "insert_after": r[8] or "appendix",
+    } for r in rows]
+
+# 刪除區塊
+def delete_custom_section(db_path: Path, report_date: str, section_id: str):
+    with get_conn(db_path) as conn:
+        conn.execute("""
+            DELETE FROM custom_sections
+            WHERE report_date=? AND section_id=?
+        """, (report_date, section_id))
+
+# 複製前一日區塊
+def copy_custom_sections(db_path: Path, from_date: str, to_date: str):
+    sections = load_custom_sections(db_path, from_date)
+    with get_conn(db_path) as conn:
+        conn.execute("DELETE FROM custom_sections WHERE report_date=?", (to_date,))
+        for s in sections:
+            conn.execute("""
+                INSERT OR REPLACE INTO custom_sections
+                (report_date, section_id, title, section_type, content_json,
+                 display_order, enabled, layout_mode, page_break_before, insert_after, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+            """, (
+                to_date,
+                s["section_id"],
+                s["title"],
+                s["section_type"],
+                json.dumps(s["content"], ensure_ascii=False),
+                s["display_order"],
+                1 if s["enabled"] else 0,
+                s.get("layout_mode", "full_page"),
+                1 if s.get("page_break_before", False) else 0,
+                s.get("insert_after", "appendix"),
+            ))

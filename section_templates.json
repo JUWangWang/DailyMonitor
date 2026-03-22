@@ -1,0 +1,120 @@
+[
+  {
+    "template_id": "tpl_text_risk_event",
+    "template_name": "重大作業風險事件｜文字說明",
+    "section_type": "text",
+    "layout_mode": "inline",
+    "insert_after": "appendix",
+    "enabled": true,
+    "page_break_before": false,
+    "default_title": "重大作業風險事件",
+    "content": {
+      "text": "請輸入說明內容"
+    }
+  },
+  {
+    "template_id": "tpl_table_risk_event",
+    "template_name": "重大作業風險事件｜標準表",
+    "section_type": "table",
+    "layout_mode": "inline",
+    "insert_after": "appendix",
+    "enabled": true,
+    "page_break_before": false,
+    "default_title": "重大作業風險事件",
+    "content": {
+      "columns": [
+        "項目",
+        "數值",
+        "狀態"
+      ],
+      "rows": [
+        [
+          "",
+          "",
+          ""
+        ]
+      ]
+    }
+  },
+  {
+    "template_id": "tpl_bullets_market",
+    "template_name": "市場異常｜條列",
+    "section_type": "bullets",
+    "layout_mode": "inline",
+    "insert_after": "summary",
+    "enabled": true,
+    "page_break_before": false,
+    "default_title": "市場異常重點",
+    "content": {
+      "items": [
+        "",
+        "",
+        ""
+      ]
+    }
+  },
+  {
+    "template_id": "tpl_0f1a6421",
+    "template_name": "新模板｜text",
+    "section_type": "table",
+    "layout_mode": "inline",
+    "insert_after": "appendix",
+    "enabled": true,
+    "page_break_before": false,
+    "default_title": "重大作業風險事件4",
+    "content": {
+      "columns": [
+        "項目",
+        "數值",
+        "狀態"
+      ],
+      "rows": [
+        [
+          [
+            "sdad"
+          ],
+          [
+            "100"
+          ],
+          [
+            "A"
+          ]
+        ]
+      ]
+    }
+  },
+  {
+    "template_id": "tpl_10dc8f35",
+    "template_name": "新模板｜text",
+    "section_type": "text",
+    "layout_mode": "inline",
+    "insert_after": "appendix",
+    "enabled": true,
+    "page_break_before": false,
+    "default_title": "重大作業風險事件",
+    "content": {
+      "text": "asdasdffs\nsadas\n4571"
+    }
+  },
+  {
+    "template_id": "tpl_e0390bda",
+    "template_name": "⚠ 授權額度使用率超限 / 警示",
+    "section_type": "table",
+    "layout_mode": "inline",
+    "insert_after": "market",
+    "enabled": true,
+    "page_break_before": false,
+    "default_title": "⚠ 授權額度使用率超限 / 警示",
+    "content": {
+      "columns": [
+        "部門別",
+        "項目",
+        "實際持有部位(千元)",
+        "授權額度(千元)",
+        "使用率",
+        "狀態"
+      ],
+      "rows": []
+    }
+  }
+]
