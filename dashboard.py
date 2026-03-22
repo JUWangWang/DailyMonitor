@@ -693,81 +693,6 @@ elif mode == "⚖️ 雙日比較":
     st.markdown(f"**{date_a}（A）vs {date_b}（B）**")
 
     # 融資維持率比較
-    st.markdown("#### 融資維持率比較")
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric(f"維持率 {date_a}", f"{da['broker']['total_maint']:.1f}%")
-    c2.metric(f"維持率 {date_b}", f"{db_['broker']['total_maint']:.1f}%",
-              delta=f"{db_['broker']['total_maint'] - da['broker']['total_maint']:+.1f}%")
-    c3.metric(f"ABC合計 {date_a}", fmt_pct(da["broker"]["abc_pct"]))
-    c4.metric(f"ABC合計 {date_b}", fmt_pct(db_["broker"]["abc_pct"]),
-              delta=f"{(db_['broker']['abc_pct'] - da['broker']['abc_pct'])*100:+.2f}%")
-
-    # ── 融資前5大個股比較 ──────────────────────────────────────
-    st.markdown("#### 融資前5大個股比較")
-    def _top5_cmp(list_a, list_b, bal_key, bal_unit, bal_fmt):
-        codes_a = {r["code"]: r for r in (list_a or [])}
-        codes_b = {r["code"]: r for r in (list_b or [])}
-        all_codes = list(dict.fromkeys(
-            [r["code"] for r in (list_a or [])] +
-            [r["code"] for r in (list_b or [])]
-        ))
-        rows = []
-        for code in all_codes:
-            ra = codes_a.get(code)
-            rb = codes_b.get(code)
-            name = (ra or rb).get("name", "")
-            if ra and rb:
-                flag = "—"
-            elif rb:
-                flag = "🆕 新增"
-            else:
-                flag = "🗑 刪除"
-            bal_a = bal_fmt(ra[bal_key]) if ra else "—"
-            bal_b = bal_fmt(rb[bal_key]) if rb else "—"
-            if ra and rb:
-                delta_bal = bal_fmt(rb[bal_key] - ra[bal_key])
-            else:
-                delta_bal = "—"
-            maint_a = f"{ra['maint']:.1f}%" if ra else "—"
-            maint_b = f"{rb['maint']:.1f}%" if rb else "—"
-            if ra and rb:
-                delta_maint = f"{rb['maint'] - ra['maint']:+.1f}%"
-            else:
-                delta_maint = "—"
-            rows.append({
-                "代號": code, "名稱": name,
-                f"{bal_unit}({date_a})": bal_a,
-                f"{bal_unit}({date_b})": bal_b,
-                f"{bal_unit}變動": delta_bal,
-                f"維持率({date_a})": maint_a,
-                f"維持率({date_b})": maint_b,
-                "維持率變動": delta_maint,
-                "異動": flag,
-            })
-        return rows
-
-    margin_cmp = _top5_cmp(
-        da["broker"].get("margin_top5"), db_["broker"].get("margin_top5"),
-        "balance", "融資餘額(億)",
-        lambda v: f"{v/1e8:.2f}"
-    )
-    if margin_cmp:
-        st.dataframe(pd.DataFrame(margin_cmp), hide_index=True, use_container_width=True)
-    else:
-        st.info("兩日均無融資前5大資料")
-
-    # ── 融券前5大個股比較 ──────────────────────────────────────
-    st.markdown("#### 融券前5大個股比較")
-    short_cmp = _top5_cmp(
-        da["broker"].get("short_top5"), db_["broker"].get("short_top5"),
-        "collat", "擔保金(億)",
-        lambda v: f"{v/1e8:.2f}"
-    )
-    if short_cmp:
-        st.dataframe(pd.DataFrame(short_cmp), hide_index=True, use_container_width=True)
-    else:
-        st.info("兩日均無融券前5大資料")
-
     # 自營損益比較
     st.markdown("#### 自營損益比較（萬元）")
     rows_a = {r["dept"]: r for r in da["market"]["ib_rows"] + da["market"]["trade_rows"]}
@@ -814,15 +739,25 @@ elif mode == "⚖️ 雙日比較":
         })
     st.dataframe(pd.DataFrame(conc_cmp), hide_index=True, use_container_width=True)
 
-    # 融資維持率比較
-    st.markdown("#### 融資維持率比較")
+    # 融資比較
+    st.markdown("#### 融資比較")
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric(f"維持率 {date_a}", f"{da['broker']['total_maint']:.1f}%")
-    c2.metric(f"維持率 {date_b}", f"{db_['broker']['total_maint']:.1f}%",
+    c1.metric(f"融資餘額 {date_a}", fmt_wan(da['broker'].get('total_balance',0)))
+    c2.metric(f"融資餘額 {date_b}", fmt_wan(db_['broker'].get('total_balance',0)),
+              delta=f"{(db_['broker'].get('total_balance',0) - da['broker'].get('total_balance',0))/1e8:+.2f}億")
+    c3.metric(f"融資維持率 {date_a}", f"{da['broker']['total_maint']:.1f}%")
+    c4.metric(f"融資維持率 {date_b}", f"{db_['broker']['total_maint']:.1f}%",
               delta=f"{db_['broker']['total_maint'] - da['broker']['total_maint']:+.1f}%")
-    c3.metric(f"ABC合計 {date_a}", fmt_pct(da["broker"]["abc_pct"]))
-    c4.metric(f"ABC合計 {date_b}", fmt_pct(db_["broker"]["abc_pct"]),
-              delta=f"{(db_['broker']['abc_pct'] - da['broker']['abc_pct'])*100:+.2f}%")
+
+    # 不限用途借款比較
+    st.markdown("#### 不限用途借款比較")
+    u1, u2, u3, u4 = st.columns(4)
+    u1.metric(f"不限用途餘額 {date_a}", fmt_wan(da['broker'].get('unlim_total_balance',0)) if da['broker'].get('unlim_total_balance') else "—")
+    u2.metric(f"不限用途餘額 {date_b}", fmt_wan(db_['broker'].get('unlim_total_balance',0)) if db_['broker'].get('unlim_total_balance') else "—",
+              delta=f"{(db_['broker'].get('unlim_total_balance',0) - da['broker'].get('unlim_total_balance',0))/1e8:+.2f}億" if da['broker'].get('unlim_total_balance') and db_['broker'].get('unlim_total_balance') else None)
+    u3.metric(f"不限用途維持率 {date_a}", f"{da['broker'].get('unlim_total_maint',0):.1f}%" if da['broker'].get('unlim_total_maint') else "—")
+    u4.metric(f"不限用途維持率 {date_b}", f"{db_['broker'].get('unlim_total_maint',0):.1f}%" if db_['broker'].get('unlim_total_maint') else "—",
+              delta=f"{db_['broker'].get('unlim_total_maint',0) - da['broker'].get('unlim_total_maint',0):+.1f}%" if da['broker'].get('unlim_total_maint') and db_['broker'].get('unlim_total_maint') else None)
 
     # ── 融資前5大個股比較 ──────────────────────────────────────
     st.markdown("#### 融資前5大個股比較")
@@ -914,88 +849,76 @@ elif mode == "📈 趨勢圖":
     if chart_type == "經紀業務":
         broker_cat = st.selectbox("選擇類別", ["融資業務", "不限用途業務"])
 
-        broker_charts = {
-            "融資業務": [
-                "全公司融資餘額趨勢",
-                "全公司融資維持率趨勢",
-                "融資A~E級比重趨勢",
-            ],
-            "不限用途業務": [
-                "全公司不限用途借款餘額趨勢",
-                "全公司不限用途借款維持率趨勢",
-                "不限用途借款擔保品A~E級比重趨勢",
-            ],
-        }
-        broker_chart_sel = st.selectbox("選擇圖表", broker_charts[broker_cat])
-
         df = load_broker_trend(start_d, end_d)
         if df.empty:
             st.info("該期間無資料")
         else:
             colors_grade = {"A":"#1a9e6a","B":"#1976d2","C":"#b45309","D":"#d97706","E":"#c62828"}
 
-            if broker_chart_sel == "全公司融資餘額趨勢":
+            if broker_cat == "融資業務":
+                # 圖1：融資餘額
                 df["bal_yi"] = df["total_balance"].astype(float) / 1e8
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(x=df["date"], y=df["bal_yi"],
+                fig1 = go.Figure()
+                fig1.add_trace(go.Scatter(x=df["date"], y=df["bal_yi"],
                     mode="lines+markers", name="融資餘額(億)",
                     line=dict(color="#1976d2", width=2), marker=dict(size=6)))
-                fig.update_layout(title="全公司融資餘額趨勢", xaxis_title="日期",
-                    yaxis_title="億元", height=400, margin=dict(t=40, b=20))
-                st.plotly_chart(fig, use_container_width=True)
+                fig1.update_layout(title="全公司融資餘額趨勢", xaxis_title="日期",
+                    yaxis_title="億元", height=350, margin=dict(t=40, b=20))
+                st.plotly_chart(fig1, use_container_width=True)
 
-            elif broker_chart_sel == "全公司融資維持率趨勢":
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(x=df["date"], y=df["total_maint"].astype(float),
+                # 圖2：融資維持率
+                fig2 = go.Figure()
+                fig2.add_trace(go.Scatter(x=df["date"], y=df["total_maint"].astype(float),
                     mode="lines+markers", name="整體維持率(%)",
                     line=dict(color="#1976d2", width=2), marker=dict(size=6)))
-                fig.add_hline(y=130, line_dash="dash", line_color="#c62828",
+                fig2.add_hline(y=130, line_dash="dash", line_color="#c62828",
                     opacity=0.6, annotation_text="追繳線 130%")
-                fig.update_layout(title="全公司融資維持率趨勢", xaxis_title="日期",
-                    yaxis_title="%", height=400, margin=dict(t=40, b=20))
-                st.plotly_chart(fig, use_container_width=True)
+                fig2.update_layout(title="全公司融資維持率趨勢", xaxis_title="日期",
+                    yaxis_title="%", height=350, margin=dict(t=40, b=20))
+                st.plotly_chart(fig2, use_container_width=True)
 
-            elif broker_chart_sel == "融資A~E級比重趨勢":
-                fig = go.Figure()
+                # 圖3：A~E 比重
+                fig3 = go.Figure()
                 for g in ["A","B","C","D","E"]:
-                    fig.add_trace(go.Scatter(x=df["date"], y=df[g].astype(float)*100,
+                    fig3.add_trace(go.Scatter(x=df["date"], y=df[g].astype(float)*100,
                         mode="lines", name=f"{g}級",
                         stackgroup="one", line=dict(color=colors_grade[g])))
-                fig.update_layout(title="融資 A~E 等級比重趨勢", xaxis_title="日期",
-                    yaxis_title="%", height=400, margin=dict(t=40, b=20))
-                st.plotly_chart(fig, use_container_width=True)
+                fig3.update_layout(title="融資 A~E 等級比重趨勢", xaxis_title="日期",
+                    yaxis_title="%", height=350, margin=dict(t=40, b=20))
+                st.plotly_chart(fig3, use_container_width=True)
 
-            elif broker_chart_sel == "全公司不限用途借款餘額趨勢":
+            else:  # 不限用途業務
+                # 圖1：不限用途借款餘額
                 df["ubal_yi"] = df["unlim_total_balance"].astype(float) / 1e8
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(x=df["date"], y=df["ubal_yi"],
+                fig1 = go.Figure()
+                fig1.add_trace(go.Scatter(x=df["date"], y=df["ubal_yi"],
                     mode="lines+markers", name="不限用途借款餘額(億)",
                     line=dict(color="#7c4dff", width=2), marker=dict(size=6)))
-                fig.update_layout(title="全公司不限用途借款餘額趨勢", xaxis_title="日期",
-                    yaxis_title="億元", height=400, margin=dict(t=40, b=20))
-                st.plotly_chart(fig, use_container_width=True)
+                fig1.update_layout(title="全公司不限用途借款餘額趨勢", xaxis_title="日期",
+                    yaxis_title="億元", height=350, margin=dict(t=40, b=20))
+                st.plotly_chart(fig1, use_container_width=True)
 
-            elif broker_chart_sel == "全公司不限用途借款維持率趨勢":
-                fig = go.Figure()
-                fig.add_trace(go.Scatter(x=df["date"], y=df["unlim_total_maint"].astype(float),
+                # 圖2：不限用途維持率
+                fig2 = go.Figure()
+                fig2.add_trace(go.Scatter(x=df["date"], y=df["unlim_total_maint"].astype(float),
                     mode="lines+markers", name="不限用途整體維持率(%)",
                     line=dict(color="#7c4dff", width=2), marker=dict(size=6)))
-                fig.add_hline(y=130, line_dash="dash", line_color="#c62828",
+                fig2.add_hline(y=130, line_dash="dash", line_color="#c62828",
                     opacity=0.6, annotation_text="追繳線 130%")
-                fig.update_layout(title="全公司不限用途借款維持率趨勢", xaxis_title="日期",
-                    yaxis_title="%", height=400, margin=dict(t=40, b=20))
-                st.plotly_chart(fig, use_container_width=True)
+                fig2.update_layout(title="全公司不限用途借款維持率趨勢", xaxis_title="日期",
+                    yaxis_title="%", height=350, margin=dict(t=40, b=20))
+                st.plotly_chart(fig2, use_container_width=True)
 
-            elif broker_chart_sel == "不限用途借款擔保品A~E級比重趨勢":
-                fig = go.Figure()
+                # 圖3：A~E 比重
+                fig3 = go.Figure()
                 for g, col in [("A","uA"),("B","uB"),("C","uC"),("D","uD"),("E","uE")]:
-                    fig.add_trace(go.Scatter(x=df["date"], y=df[col].astype(float)*100,
+                    fig3.add_trace(go.Scatter(x=df["date"], y=df[col].astype(float)*100,
                         mode="lines", name=f"{g}級",
                         stackgroup="one", line=dict(color=colors_grade[g])))
-                fig.update_layout(title="不限用途借款擔保品 A~E 等級比重趨勢",
+                fig3.update_layout(title="不限用途借款擔保品 A~E 等級比重趨勢",
                     xaxis_title="日期", yaxis_title="%",
-                    height=400, margin=dict(t=40, b=20))
-                st.plotly_chart(fig, use_container_width=True)
+                    height=350, margin=dict(t=40, b=20))
+                st.plotly_chart(fig3, use_container_width=True)
 
     elif chart_type == "自營損益":
         # 直接從 DB 讀出所有存在的 dept + biz 組合，避免硬寫字串與實際資料不符
