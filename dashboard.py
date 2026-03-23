@@ -19,7 +19,8 @@ import config
 
 import uuid
 import copy
-from db import load_custom_sections, save_custom_section, delete_custom_section
+from db import load_custom_sections, save_custom_section, delete_custom_section, copy_custom_sections
+from alert_logic import build_auto_alert_items, merge_alert_items, calc_signal_levels
 
 # ── 頁面設定 ────────────────────────────────────────────────
 st.set_page_config(
@@ -250,126 +251,6 @@ def badge(status):
            "正常":"tag-green"}.get(status, "tag-blue")
     return f'<span class="{cls}">{status or "—"}</span>'
 
-def build_auto_alert_items(data: dict) -> list[dict]:
-    m = data["market"]
-    wm = data["wm"]
-
-    items = []
-    _all_pnl_rows = m.get("ib_rows", []) + m.get("strategy_rows", []) + m.get("trade_rows", [])
-    seq = 1
-
-    for r in _all_pnl_rows:
-        mp = float(r.get("m_pct") or 0)
-        yp = float(r.get("y_pct") or 0)
-        dept = r.get("dept", "")
-
-        if mp >= 1.0:
-            items.append({
-                "id": f"auto_market_m_{seq}",
-                "source": "auto",
-                "category": "market",
-                "text": f"自營 {dept} 月損失超限（{mp*100:.1f}%）",
-                "level": "r",
-                "enabled": True,
-                "sort_order": 10 + seq
-            })
-            seq += 1
-        elif mp >= 0.8:
-            items.append({
-                "id": f"auto_market_m_{seq}",
-                "source": "auto",
-                "category": "market",
-                "text": f"自營 {dept} 月損失80%提醒（{mp*100:.1f}%）",
-                "level": "o",
-                "enabled": True,
-                "sort_order": 10 + seq
-            })
-            seq += 1
-
-        if yp >= 1.0:
-            items.append({
-                "id": f"auto_market_y_{seq}",
-                "source": "auto",
-                "category": "market",
-                "text": f"自營 {dept} 年損失超限（{yp*100:.1f}%）",
-                "level": "r",
-                "enabled": True,
-                "sort_order": 20 + seq
-            })
-            seq += 1
-        elif yp >= 0.8:
-            items.append({
-                "id": f"auto_market_y_{seq}",
-                "source": "auto",
-                "category": "market",
-                "text": f"自營 {dept} 年損失80%提醒（{yp*100:.1f}%）",
-                "level": "o",
-                "enabled": True,
-                "sort_order": 20 + seq
-            })
-            seq += 1
-
-    for r in m.get("d3_over", []):
-        items.append({
-            "id": f'auto_d3_over_{r["code"]}',
-            "source": "auto",
-            "category": "market",
-            "text": f'單檔損失超限 {r["code"]} {r["name"]}（{r["loss_rate"]*100:.1f}%）',
-            "level": "r",
-            "enabled": True,
-            "sort_order": 200
-        })
-
-    for r in m.get("d3_warn", []):
-        items.append({
-            "id": f'auto_d3_warn_{r["code"]}',
-            "source": "auto",
-            "category": "market",
-            "text": f'單檔損失80%提醒 {r["code"]} {r["name"]}（{r["loss_rate"]*100:.1f}%）',
-            "level": "o",
-            "enabled": True,
-            "sort_order": 210
-        })
-
-    for v in wm.get("conc", {}).values():
-        if v.get("status") in ("達L1", "達L2"):
-            items.append({
-                "id": f'auto_wm_{v.get("name","")}',
-                "source": "auto",
-                "category": "wm",
-                "text": f'財管 {v.get("name","")} {v.get("status","")}（{(v.get("pct") or 0)*100:.2f}%）',
-                "level": "o" if v.get("status") == "達L1" else "r",
-                "enabled": True,
-                "sort_order": 300
-            })
-
-    return items
-
-
-def merge_alert_items(data: dict) -> list[dict]:
-    saved_items = data.get("alert_items", []) or []
-    auto_items = build_auto_alert_items(data)
-
-    auto_override_map = {
-        x.get("id"): x for x in saved_items
-        if x.get("source") == "auto" and x.get("id")
-    }
-
-    merged = []
-    for item in auto_items:
-        override = auto_override_map.get(item["id"])
-        if override:
-            item["enabled"] = override.get("enabled", item["enabled"])
-            item["level"] = override.get("level", item["level"])
-            item["sort_order"] = override.get("sort_order", item["sort_order"])
-        merged.append(item)
-
-    for item in saved_items:
-        if item.get("source") == "manual":
-            merged.append(item)
-
-    return sorted(merged, key=lambda x: x.get("sort_order", 9999))
-
 
 def level_label_to_code(label: str) -> str:
     return {
@@ -486,16 +367,17 @@ if mode == "📅 單日報告":
     b  = data["broker"]
 
     # 燈號（與 render.py 同源）
-    _all_pnl = m.get("ib_rows",[]) + m.get("strategy_rows",[]) + m.get("trade_rows",[])
-    _m_over  = sum(1 for r in _all_pnl if float(r.get("m_pct") or 0) >= 1.0)
-    _y_over  = sum(1 for r in _all_pnl if float(r.get("y_pct") or 0) >= 1.0)
-    _m_warn  = sum(1 for r in _all_pnl if 0.8 <= float(r.get("m_pct") or 0) < 1.0)
-    _y_warn  = sum(1 for r in _all_pnl if 0.8 <= float(r.get("y_pct") or 0) < 1.0)
-    _sig_market = "red"    if _m_over or _y_over or m["d3_over"] else \
-                  "orange" if _m_warn or _y_warn or m["d3_warn"] else "green"
-    _sig_wm     = "orange" if any(v.get("status") in ("達L1","達L2") for v in wm["conc"].values()) else "green"
-    _broker_maint = float(b.get("total_maint", 0) or 0)
-    _sig_broker = "orange" if _broker_maint > 0 and _broker_maint < 160 else "green"
+    signal_info = calc_signal_levels(data)
+    _sig_market = signal_info["market"]
+    _sig_wm = signal_info["wm"]
+    _sig_broker = signal_info["broker"]
+
+    _m_over = signal_info["loss_over_cnt"]
+    _m_warn = signal_info["loss_warn_cnt"]
+    _y_over = signal_info["y_over_cnt"]
+    _y_warn = signal_info["y_warn_cnt"]
+
+    _all_pnl = m.get("ib_rows", []) + m.get("strategy_rows", []) + m.get("trade_rows", [])
 
     st.markdown(f"""
     <div style="display:flex;gap:12px;margin:8px 0 16px;align-items:center;">
@@ -1290,6 +1172,27 @@ elif mode == "⚡ 今日重點說明編輯器":
     if st.button("💾 儲存今日重點設定", type="primary"):
         save_alert_items(config.DB_PATH, sel_date, edited_rows)
         st.success("✅ 已儲存今日重點說明設定")
+    
+    st.divider()
+    st.markdown("### 👁 報告預覽（今日重點區）")
+
+    preview_items = [x for x in edited_rows if x.get("enabled", True)]
+    if preview_items:
+        for item in sorted(preview_items, key=lambda x: x.get("sort_order", 9999)):
+            tag_html = {
+                "r": '<span class="tag-red">紅燈</span>',
+                "o": '<span class="tag-orange">橙燈</span>',
+                "y": '<span class="tag-yellow">黃燈</span>',
+                "b": '<span class="tag-blue">藍燈</span>',
+                "g": '<span class="tag-green">綠燈</span>',
+            }.get(item.get("level", "b"), '<span class="tag-blue">藍燈</span>')
+
+            st.markdown(
+                f"{tag_html}　{item.get('text','')}",
+                unsafe_allow_html=True
+            )
+    else:
+        st.write("✅ 今日各項指標正常")
 
 # ════════════════════════════════════════════════════════════
 #  🧩 報告區塊編輯器
@@ -1302,10 +1205,29 @@ elif mode == "🧩 報告區塊編輯器":
         st.stop()
 
     sel_date = st.selectbox("選擇報告日期", date_options, key="custom_section_date")
-    report_date_db = sel_date  # 這裡 date_options 本來就是 YYYY-MM-DD
+    report_date_db = sel_date
+
+    st.markdown("### 快速操作")
+    available_copy_dates = [d for d in date_options if d != sel_date]
+    if available_copy_dates:
+        col_copy1, col_copy2 = st.columns([3, 1])
+        with col_copy1:
+            from_date = st.selectbox(
+                "從哪一天複製區塊設定",
+                available_copy_dates,
+                key="copy_section_from_date"
+            )
+        with col_copy2:
+            st.write("")
+            st.write("")
+            if st.button("📋 複製他日區塊", use_container_width=True):
+                copy_custom_sections(config.DB_PATH, from_date, sel_date)
+                st.success(f"✅ 已將 {from_date} 的區塊複製到 {sel_date}")
+                st.rerun()
 
     sections = load_custom_sections(config.DB_PATH, report_date_db)
-    
+
+    st.divider()
     st.markdown("### 選擇既有區塊 / 新增區塊")
 
     sec_map = {f"{s['display_order']}｜{s['title']}": s for s in sections}
@@ -1323,7 +1245,6 @@ elif mode == "🧩 報告區塊編輯器":
 
     templates = load_section_templates()
 
-    st.markdown("### 新增來源")
     create_mode = st.radio(
         "新增方式",
         ["空白新增", "從模板新增"],
@@ -1346,6 +1267,11 @@ elif mode == "🧩 報告區塊編輯器":
         else:
             st.info("目前尚無模板，請先建立 section_templates.json 或先從現有區塊另存模板。")
 
+    if editing_section:
+        st.info(f"目前正在編輯：{editing_section['display_order']}｜{editing_section['title']}（可儲存 / 刪除 / 另存模板）")
+    else:
+        st.info("目前為新增區塊模式（可儲存 / 另存模板；刪除功能僅限既有區塊）")
+
     st.markdown("### 既有區塊")
     if sections:
         list_df = pd.DataFrame([
@@ -1355,6 +1281,7 @@ elif mode == "🧩 報告區塊編輯器":
                 "類型": s["section_type"],
                 "標題": s["title"],
                 "新頁": s["page_break_before"],
+                "插入位置": s.get("insert_after", "appendix"),
                 "section_id": s["section_id"],
             }
             for s in sections
@@ -1400,51 +1327,63 @@ elif mode == "🧩 報告區塊編輯器":
         section_id = str(uuid.uuid4())[:8]
         content_default = {}
 
-    title = st.text_input("區塊標題", value=title_default)
+    basic_col1, basic_col2 = st.columns([2, 1])
 
-    section_type_options = ["text", "bullets", "table"]
-    section_type = st.selectbox(
-        "區塊類型",
-        section_type_options,
-        index=section_type_options.index(section_type_default)
-    )
+    with basic_col1:
+        title = st.text_input("區塊標題", value=title_default)
 
-    display_order = st.number_input(
-        "顯示順序",
-        min_value=1,
-        step=10,
-        value=int(display_order_default)
-    )
+    with basic_col2:
+        enabled = st.checkbox("納入本次報告", value=enabled_default)
 
-    enabled = st.checkbox("納入本次報告", value=enabled_default)
+    setting_col1, setting_col2, setting_col3 = st.columns(3)
 
-    layout_mode_options = ["full_page", "inline"]
-    layout_mode = st.selectbox(
-        "版面模式",
-        layout_mode_options,
-        index=layout_mode_options.index(layout_mode_default),
-        format_func=lambda x: "獨立頁" if x == "full_page" else "接續顯示"
-    )
+    with setting_col1:
+        section_type_options = ["text", "bullets", "table"]
+        section_type = st.selectbox(
+            "區塊類型",
+            section_type_options,
+            index=section_type_options.index(section_type_default)
+        )
 
-    insert_after_options = ["summary", "market", "wm", "broker", "appendix"]
-    insert_after = st.selectbox(
-        "插入位置",
-        insert_after_options,
-        index=insert_after_options.index(insert_after_default),
-        format_func=lambda x: {
-            "summary": "總覽後",
-            "market": "自營後",
-            "wm": "財管後",
-            "broker": "經紀後",
-            "appendix": "附加區"
-        }[x]
-    )
+    with setting_col2:
+        display_order = st.number_input(
+            "顯示順序",
+            min_value=1,
+            step=10,
+            value=int(display_order_default)
+        )
 
-    page_break_before = st.checkbox(
-        "此區塊前強制換頁（僅接續顯示時有意義）",
-        value=page_break_default
-    )
-    
+    with setting_col3:
+        layout_mode_options = ["full_page", "inline"]
+        layout_mode = st.selectbox(
+            "版面模式",
+            layout_mode_options,
+            index=layout_mode_options.index(layout_mode_default),
+            format_func=lambda x: "獨立頁" if x == "full_page" else "接續顯示"
+        )
+
+    setting_col4, setting_col5 = st.columns([2, 1])
+
+    with setting_col4:
+        insert_after_options = ["summary", "market", "wm", "broker", "appendix"]
+        insert_after = st.selectbox(
+            "插入位置",
+            insert_after_options,
+            index=insert_after_options.index(insert_after_default),
+            format_func=lambda x: {
+                "summary": "總覽後",
+                "market": "自營後",
+                "wm": "財管後",
+                "broker": "經紀後",
+                "appendix": "附加區"
+            }[x]
+        )
+
+    with setting_col5:
+        page_break_before = st.checkbox(
+            "此區塊前強制換頁",
+            value=page_break_default
+        )
 
     content = {}
 
@@ -1477,9 +1416,18 @@ elif mode == "🧩 報告區塊編輯器":
         cols = [c.strip() for c in columns_text.split(",") if c.strip()]
         if not cols:
             cols = ["欄位1", "欄位2"]
+
         default_rows = content_default.get("rows", [])
         if default_rows:
-            default_table_df = pd.DataFrame(default_rows, columns=cols)
+            normalized_rows = []
+            for row in default_rows:
+                row_list = list(row)
+                if len(row_list) < len(cols):
+                    row_list += [""] * (len(cols) - len(row_list))
+                elif len(row_list) > len(cols):
+                    row_list = row_list[:len(cols)]
+                normalized_rows.append(row_list)
+            default_table_df = pd.DataFrame(normalized_rows, columns=cols)
         else:
             default_table_df = pd.DataFrame(columns=cols)
 
@@ -1494,9 +1442,44 @@ elif mode == "🧩 報告區塊編輯器":
             "rows": table_df.fillna("").values.tolist()
         }
 
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("💾 儲存區塊", type="primary"):
+    st.divider()
+    st.markdown("### 區塊操作")
+
+    op_col1, op_col2 = st.columns([2, 1])
+
+    with op_col1:
+        save_as_template_name = st.text_input(
+            "另存模板名稱",
+            value=f"{title.strip() or '新模板'}｜{section_type}",
+            key="save_template_name"
+        )
+
+    with op_col2:
+        st.write("")
+        if st.button("📌 另存為模板", use_container_width=True):
+            if not title.strip():
+                st.error("請先輸入區塊標題後再存成模板")
+            else:
+                templates = load_section_templates()
+                template_obj = {
+                    "template_id": f"tpl_{uuid.uuid4().hex[:8]}",
+                    "template_name": save_as_template_name.strip(),
+                    "section_type": section_type,
+                    "layout_mode": layout_mode,
+                    "insert_after": insert_after,
+                    "enabled": enabled,
+                    "page_break_before": page_break_before,
+                    "default_title": title.strip(),
+                    "content": content,
+                }
+                templates.append(template_obj)
+                save_section_templates(templates)
+                st.success("✅ 已另存為模板")
+
+    btn1, btn2 = st.columns(2)
+
+    with btn1:
+        if st.button("💾 儲存區塊", type="primary", use_container_width=True):
             if not title.strip():
                 st.error("請輸入區塊標題")
             else:
@@ -1516,48 +1499,16 @@ elif mode == "🧩 報告區塊編輯器":
                     st.success("✅ 已更新區塊")
                 else:
                     st.success("✅ 已新增區塊")
+                st.rerun()
 
-    with col2:
-        if sections:
-            del_target = st.selectbox(
-                "選擇要刪除的區塊",
-                options=sections,
-                format_func=lambda s: f"{s['display_order']}｜{s['title']}",
-                key="delete_custom_section_target"
-            )
-            if st.button("🗑 刪除選取區塊"):
-                delete_custom_section(config.DB_PATH, report_date_db, del_target["section_id"])
-                st.success("✅ 已刪除區塊，請重新整理或切換頁面後查看。")
-
-    st.divider()
-    st.markdown("### 模板功能")
-
-    template_name = st.text_input(
-        "另存模板名稱",
-        value=f"{title.strip() or '新模板'}｜{section_type}",
-        key="save_template_name"
-    )
-
-    if st.button("📌 另存為模板"):
-        if not title.strip():
-            st.error("請先輸入區塊標題後再存成模板")
+    with btn2:
+        if editing_section:
+            if st.button("🗑 刪除此區塊", use_container_width=True):
+                delete_custom_section(config.DB_PATH, report_date_db, section_id)
+                st.success("✅ 已刪除目前區塊")
+                st.rerun()
         else:
-            templates = load_section_templates()
-            template_obj = {
-                "template_id": f"tpl_{uuid.uuid4().hex[:8]}",
-                "template_name": template_name.strip(),
-                "section_type": section_type,
-                "layout_mode": layout_mode,
-                "insert_after": insert_after,
-                "enabled": enabled,
-                "page_break_before": page_break_before,
-                "default_title": title.strip(),
-                "content": content,
-            }
-            templates.append(template_obj)
-            save_section_templates(templates)
-            st.success("✅ 已另存為模板")
-
+            st.button("🗑 刪除此區塊", disabled=True, use_container_width=True)
 # ════════════════════════════════════════════════════════════
 #  ✉️ 呈報信件
 # ════════════════════════════════════════════════════════════

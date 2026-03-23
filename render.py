@@ -7,6 +7,7 @@
 # ============================================================
 
 from pathlib import Path
+from alert_logic import build_auto_alert_items, merge_alert_items, calc_signal_levels
 
 
 def _wan(v, unit="萬"):
@@ -79,101 +80,6 @@ def _conc_row(item, cat_label):
       {_badge(status)}
     </div>"""
 
-def build_auto_alert_items(data: dict) -> list[dict]:
-    m = data["market"]
-    wm = data["wm"]
-
-    items = []
-    _all_pnl_rows = m.get("ib_rows", []) + m.get("strategy_rows", []) + m.get("trade_rows", [])
-
-    seq = 1
-    for r in _all_pnl_rows:
-        mp = float(r.get("m_pct") or 0)
-        yp = float(r.get("y_pct") or 0)
-        dept = r.get("dept", "")
-
-        if mp >= 1.0:
-            items.append({
-                "id": f"auto_market_m_{seq}",
-                "source": "auto",
-                "category": "market",
-                "text": f"自營 {dept} 月損失超限（{mp*100:.1f}%）",
-                "level": "r",
-                "enabled": True,
-                "sort_order": 10 + seq
-            })
-            seq += 1
-        elif mp >= 0.8:
-            items.append({
-                "id": f"auto_market_m_{seq}",
-                "source": "auto",
-                "category": "market",
-                "text": f"自營 {dept} 月損失80%提醒（{mp*100:.1f}%）",
-                "level": "o",
-                "enabled": True,
-                "sort_order": 10 + seq
-            })
-            seq += 1
-
-        if yp >= 1.0:
-            items.append({
-                "id": f"auto_market_y_{seq}",
-                "source": "auto",
-                "category": "market",
-                "text": f"自營 {dept} 年損失超限（{yp*100:.1f}%）",
-                "level": "r",
-                "enabled": True,
-                "sort_order": 20 + seq
-            })
-            seq += 1
-        elif yp >= 0.8:
-            items.append({
-                "id": f"auto_market_y_{seq}",
-                "source": "auto",
-                "category": "market",
-                "text": f"自營 {dept} 年損失80%提醒（{yp*100:.1f}%）",
-                "level": "o",
-                "enabled": True,
-                "sort_order": 20 + seq
-            })
-            seq += 1
-
-    for r in m.get("d3_over", []):
-        items.append({
-            "id": f'auto_d3_over_{r["code"]}',
-            "source": "auto",
-            "category": "market",
-            "text": f'單檔損失超限 {r["code"]} {r["name"]}（{r["loss_rate"]*100:.1f}%）',
-            "level": "r",
-            "enabled": True,
-            "sort_order": 200
-        })
-
-    for r in m.get("d3_warn", []):
-        items.append({
-            "id": f'auto_d3_warn_{r["code"]}',
-            "source": "auto",
-            "category": "market",
-            "text": f'單檔損失80%提醒 {r["code"]} {r["name"]}（{r["loss_rate"]*100:.1f}%）',
-            "level": "o",
-            "enabled": True,
-            "sort_order": 210
-        })
-
-    for _, v in wm.get("conc", {}).items():
-        if v.get("status") in ("達L1", "達L2"):
-            items.append({
-                "id": f'auto_wm_{v.get("name","")}',
-                "source": "auto",
-                "category": "wm",
-                "text": f'財管 {v.get("name","")} {v.get("status","")}（{(v.get("pct") or 0)*100:.2f}%）',
-                "level": "o" if v.get("status") == "達L1" else "r",
-                "enabled": True,
-                "sort_order": 300
-            })
-
-    return items
-
 def render_alert_items(alert_items: list[dict]) -> str:
     items = [x for x in alert_items if x.get("enabled", True)]
     items = sorted(items, key=lambda x: x.get("sort_order", 9999))
@@ -223,20 +129,15 @@ def generate_html(data: dict, custom_sections: list[dict] | None = None) -> str:
     d3_warn_cnt   = len(m["d3_warn"])
 
     # ── 燈號 ─────────────────────────────────────────────────
-    # 自營：超限→紅、80%提醒→橙、正常→綠（與計數卡同源）
-    sig_market = "red"    if loss_over_cnt or y_over_cnt or m["d3_over"] else \
-                 "orange" if loss_warn_cnt or y_warn_cnt or m["d3_warn"] else "green"
-    # 財管：只有達L1/達L2才顯示警示（橙），其餘正常
-    sig_wm = "orange" if any(v.get("status") in ("達L1","達L2") for v in wm["conc"].values()) else "green"
-    # 經紀：整體維持率 < 160% → 橙燈
+    signal_info = calc_signal_levels(data)
+    sig_market = signal_info["market"]
+    sig_wm = signal_info["wm"]
+    sig_broker = signal_info["broker"]
+
     _broker_maint   = float(b.get("total_maint", 0) or 0)
     _broker_balance = float(b.get("total_balance", 0) or 0)
     _unlim_balance  = float(b.get("unlim_total_balance", 0) or 0)
     _unlim_maint    = float(b.get("unlim_total_maint", 0) or 0)
-    sig_broker = "orange" if (
-        (_broker_maint > 0 and _broker_maint < 160) or
-        (_unlim_maint  > 0 and _unlim_maint  < 160)
-    ) else "green"
 
     sig_txt = {
         "red":    ("⚠ 超限",  "var(--red)"),
@@ -263,28 +164,7 @@ def generate_html(data: dict, custom_sections: list[dict] | None = None) -> str:
     sb_sub_line1 = f"融資餘額 {_bal_str}，維持率 {_broker_maint:.1f}%{_margin_warn}"
     sb_sub_line2 = f"不限用途借款餘額 {_ubal_str}，維持率 {_umnt_str}{_unlim_warn}"
 
-    manual_alert_items = data.get("alert_items", []) or []
-    auto_alert_items = build_auto_alert_items(data)
-
-    auto_override_map = {
-        x.get("id"): x for x in manual_alert_items
-        if x.get("source") == "auto" and x.get("id")
-    }
-
-    merged_alert_items = []
-
-    for item in auto_alert_items:
-        override = auto_override_map.get(item["id"])
-        if override:
-            item["enabled"] = override.get("enabled", item["enabled"])
-            item["level"] = override.get("level", item["level"])
-            item["sort_order"] = override.get("sort_order", item["sort_order"])
-        merged_alert_items.append(item)
-
-    for item in manual_alert_items:
-        if item.get("source") == "manual":
-            merged_alert_items.append(item)
-
+    merged_alert_items = merge_alert_items(data)
     ai_html = render_alert_items(merged_alert_items)
 
     # ── 損失狀態圓圈（Sheet1 col O/P m_pct/y_pct 為唯一來源）──

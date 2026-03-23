@@ -6,6 +6,7 @@ import sqlite3
 import json
 from pathlib import Path
 from datetime import date
+from alert_logic import calc_signal_levels, build_auto_alert_items
 
 
 def get_conn(db_path: Path):
@@ -130,26 +131,20 @@ def save_report(db_path: Path, data: dict, overwrite: bool = True):
     broker  = data["broker"]
 
     # 計算整體燈號
-    has_red    = bool(market["loss_over"] or market["d3_over"] or
-                      any(v["status"] in ("達L2",) for v in wm["conc"].values()))
-    has_yellow = bool(market["loss_warn"] or market["d3_warn"] or
-                      any(v["status"] in ("達L1","接近L1","80%提醒") for v in wm["conc"].values()))
-    alert_level = "red" if has_red else ("yellow" if has_yellow else "green")
+    signal_info = calc_signal_levels(data)
+    sig_market = signal_info["market"]
+    sig_wm = signal_info["wm"]
+    sig_broker = signal_info["broker"]
 
+    if "red" in (sig_market, sig_wm, sig_broker):
+        alert_level = "red"
+    elif "orange" in (sig_market, sig_wm, sig_broker):
+        alert_level = "orange"
+    else:
+        alert_level = "green"
     # 今日重點條列
-    alert_items = []
-    for r in market["loss_over"]:
-        alert_items.append({"type":"red","text":f"自營 {r['dept']}{r['biz']} 月損失超限（{r['m_pct']*100:.1f}%）"})
-    for r in market["d3_over"]:
-        alert_items.append({"type":"red","text":f"單檔損失超限 {r['code']} {r['name']}（{r['loss_rate']*100:.1f}%）"})
-    for k, v in wm["conc"].items():
-        if v["status"] in ("達L2","達L1"):
-            alert_items.append({"type":"red","text":f"財管 {v['name']} {v['status']}（{v['pct']*100:.2f}%）"})
-        elif v["status"] in ("接近L1","80%提醒"):
-            alert_items.append({"type":"yellow","text":f"財管 {v['name']} {v['status']}（{v['pct']*100:.2f}%）"})
-    for r in market["loss_warn"]:
-        alert_items.append({"type":"yellow","text":f"自營 {r['dept']}{r['biz']} 月損失80%提醒"})
-
+    alert_items = build_auto_alert_items(data)
+    
     with get_conn(db_path) as conn:
         # daily_summary
         if overwrite:
@@ -188,12 +183,27 @@ def save_report(db_path: Path, data: dict, overwrite: bool = True):
         """, [(report_date, cat, nm, pct, l1, l2, st) for cat, nm, pct, l1, l2, st in conc_rows])
 
         # alert_events
+        level_map = {
+            "r": "red",
+            "o": "orange",
+            "y": "yellow",
+            "b": "blue",
+            "g": "green",
+        }
+
         for item in alert_items:
             conn.execute("""
                 INSERT OR REPLACE INTO alert_events
                 (report_date, source, type, dept, name, value, note) VALUES (?,?,?,?,?,?,?)
-            """, (report_date, "market", item["type"], "", item["text"], 0, ""))
-
+            """, (
+                report_date,
+                item.get("category", "system"),
+                level_map.get(item.get("level", "b"), "blue"),
+                "",
+                item.get("text", ""),
+                0,
+                ""
+            ))
         # broker_margin
         grades  = {r["grade"]: r for r in broker["dist_rows"]}
         ugrades = {r["grade"]: r for r in broker.get("unlim_dist_rows", [])}
