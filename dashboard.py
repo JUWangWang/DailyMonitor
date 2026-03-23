@@ -133,14 +133,38 @@ def load_broker_trend(start: str, end: str):
 
 @st.cache_data(ttl=60)
 def load_alert_events(start: str, end: str):
+    """
+    讀取超限 / 警示事件。
+    使用與「今日重點說明」完全相同的邏輯：load_day + merge_alert_items。
+    確保超限清單與單日報告的今日重點內容一致。
+    """
+    level_to_display = {"r": "red", "o": "orange", "y": "yellow", "b": "blue", "g": "green"}
+    rows = []
+
+    # 取出該區間所有日期
     with db_conn() as conn:
-        rows = conn.execute("""
-            SELECT report_date, source, type, name
-            FROM alert_events
-            WHERE report_date BETWEEN ? AND ?
-            ORDER BY report_date DESC
-        """, (start, end)).fetchall()
-    return pd.DataFrame(rows, columns=["日期","來源","類型","說明"])
+        dates = [r[0] for r in conn.execute(
+            "SELECT report_date FROM daily_summary WHERE report_date BETWEEN ? AND ? ORDER BY report_date DESC",
+            (start, end)
+        ).fetchall()]
+
+    for report_date in dates:
+        data = load_day(report_date)
+        if not data:
+            continue
+        merged = merge_alert_items(data)
+        for item in merged:
+            if not item.get("enabled", True):
+                continue
+            lvl  = level_to_display.get(item.get("level", "b"), "blue")
+            src  = item.get("source", "auto")
+            text = item.get("text", "")
+            rows.append({"日期": report_date, "來源": src, "類型": lvl, "說明": text})
+
+    df = pd.DataFrame(rows, columns=["日期","來源","類型","說明"])
+    if not df.empty:
+        df = df.sort_values("日期", ascending=False).reset_index(drop=True)
+    return df
 
 def save_alert_items(db_path, report_date: str, alert_items: list[dict]):
     conn = sqlite3.connect(str(db_path))
@@ -149,6 +173,20 @@ def save_alert_items(db_path, report_date: str, alert_items: list[dict]):
             "UPDATE daily_summary SET alert_items=? WHERE report_date=?",
             (json.dumps(alert_items, ensure_ascii=False), report_date)
         )
+        # 同步人工項目到 alert_events（先刪除舊的 manual，再重寫）
+        conn.execute(
+            "DELETE FROM alert_events WHERE report_date=? AND source=?",
+            (report_date, "manual")
+        )
+        level_map = {"r": "red", "o": "orange", "y": "yellow", "b": "blue", "g": "green"}
+        for item in alert_items:
+            if item.get("source") == "manual" and item.get("enabled", True):
+                conn.execute("""
+                    INSERT OR REPLACE INTO alert_events
+                    (report_date, source, type, dept, name, value, note) VALUES (?,?,?,?,?,?,?)
+                """, (report_date, "manual",
+                      level_map.get(item.get("level", "b"), "blue"),
+                      "", item.get("text", ""), 0, ""))
         conn.commit()
     finally:
         conn.close()
@@ -1018,8 +1056,11 @@ elif mode == "🔔 超限事件清單":
     with col2:
         end_d = st.selectbox("結束日期", date_options, index=0)
     with col3:
-        # filter_type = st.selectbox("篩選類型", ["全部", "red（超限）", "yellow（警示）"])
-        filter_type = st.selectbox("篩選類型", ["全部", "red（超限）", "yellow（警示）"])
+        filter_types = st.multiselect(
+            "篩選類型（可多選）",
+            ["red（超限）", "orange（橙燈警示）", "yellow（黃燈警示）", "blue（藍燈）", "green（綠燈）"],
+            default=["red（超限）", "orange（橙燈警示）"]
+        )
 
     if start_d > end_d:
         start_d, end_d = end_d, start_d
@@ -1028,10 +1069,17 @@ elif mode == "🔔 超限事件清單":
     if df.empty:
         st.info("該期間無超限/警示事件")
     else:
-        if filter_type == "red（超限）":
-            df = df[df["類型"] == "red"]
-        elif filter_type == "yellow（警示）":
-            df = df[df["類型"] == "yellow"]
+        # 多選篩選
+        type_map = {
+            "red（超限）":    "red",
+            "orange（橙燈警示）": "orange",
+            "yellow（黃燈警示）": "yellow",
+            "blue（藍燈）":   "blue",
+            "green（綠燈）":  "green",
+        }
+        if filter_types:
+            selected_types = [type_map[t] for t in filter_types]
+            df = df[df["類型"].isin(selected_types)]
 
         st.markdown(f"共 **{len(df)}** 筆事件")
 
@@ -1039,12 +1087,18 @@ elif mode == "🔔 超限事件清單":
         if not df.empty:
             count_df = df.groupby(["日期","類型"]).size().reset_index(name="件數")
             fig = px.bar(count_df, x="日期", y="件數", color="類型",
-                         color_discrete_map={"red":"#c62828","yellow":"#f59e0b"},
+                         color_discrete_map={
+                             "red":    "#c62828",
+                             "orange": "#ea580c",
+                             "yellow": "#f59e0b",
+                             "blue":   "#1976d2",
+                             "green":  "#1a9e6a",
+                         },
                          title="每日超限/警示件數", height=300)
             fig.update_layout(margin=dict(t=40,b=20))
             st.plotly_chart(fig, use_container_width=True)
 
-        st.dataframe(df[["日期","類型","說明"]], hide_index=True, use_container_width=True)
+        st.dataframe(df[["日期","來源","類型","說明"]], hide_index=True, use_container_width=True)
 
 
 # ════════════════════════════════════════════════════════════
@@ -1163,10 +1217,12 @@ elif mode == "⚡ 今日重點說明編輯器":
 
     st.markdown("### 系統 / 人工重點項目")
     edited_rows = []
+    delete_ids = []
 
     for idx, item in enumerate(merged_items):
         with st.container(border=True):
-            c1, c2, c3 = st.columns([1, 1, 5])
+            is_manual = item.get("source") == "manual"
+            c1, c2, c3, c4 = st.columns([1, 1, 5, 0.7])
             with c1:
                 enabled = st.checkbox("納入", value=item.get("enabled", True), key=f"alert_enabled_{idx}")
             with c2:
@@ -1177,23 +1233,35 @@ elif mode == "⚡ 今日重點說明編輯器":
                     key=f"alert_level_{idx}"
                 )
             with c3:
-                if item.get("source") == "manual":
+                if is_manual:
                     text = st.text_input("內容", value=item.get("text", ""), key=f"alert_text_{idx}")
                 else:
                     text = item.get("text", "")
                     st.text_input("內容", value=text, disabled=True, key=f"alert_text_{idx}")
+            with c4:
+                if is_manual:
+                    if st.button("🗑", key=f"del_alert_{idx}", help="刪除此人工重點"):
+                        delete_ids.append(item.get("id"))
 
             sort_order = st.number_input("排序", min_value=1, value=int(item.get("sort_order", 9999)), step=10, key=f"alert_sort_{idx}")
 
-            edited_rows.append({
-                "id": item.get("id"),
-                "source": item.get("source", "manual"),
-                "category": item.get("category", "manual"),
-                "text": text,
-                "level": level_label_to_code(level_label),
-                "enabled": enabled,
-                "sort_order": int(sort_order),
-            })
+            if item.get("id") not in delete_ids:
+                edited_rows.append({
+                    "id": item.get("id"),
+                    "source": item.get("source", "manual"),
+                    "category": item.get("category", "manual"),
+                    "text": text,
+                    "level": level_label_to_code(level_label),
+                    "enabled": enabled,
+                    "sort_order": int(sort_order),
+                })
+
+    if delete_ids:
+        remaining = [r for r in data.get("alert_items", []) or []
+                     if r.get("id") not in delete_ids]
+        save_alert_items(config.DB_PATH, sel_date, remaining)
+        st.success(f"✅ 已刪除 {len(delete_ids)} 筆人工重點")
+        st.rerun()
 
     st.divider()
     st.markdown("### 人工新增重點")
