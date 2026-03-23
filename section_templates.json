@@ -1,102 +1,5 @@
 [
   {
-    "template_id": "tpl_text_risk_event",
-    "template_name": "重大作業風險事件｜文字說明",
-    "section_type": "text",
-    "layout_mode": "inline",
-    "insert_after": "appendix",
-    "enabled": true,
-    "page_break_before": false,
-    "default_title": "重大作業風險事件",
-    "content": {
-      "text": "請輸入說明內容"
-    }
-  },
-  {
-    "template_id": "tpl_table_risk_event",
-    "template_name": "重大作業風險事件｜標準表",
-    "section_type": "table",
-    "layout_mode": "inline",
-    "insert_after": "appendix",
-    "enabled": true,
-    "page_break_before": false,
-    "default_title": "重大作業風險事件",
-    "content": {
-      "columns": [
-        "項目",
-        "數值",
-        "狀態"
-      ],
-      "rows": [
-        [
-          "",
-          "",
-          ""
-        ]
-      ]
-    }
-  },
-  {
-    "template_id": "tpl_bullets_market",
-    "template_name": "市場異常｜條列",
-    "section_type": "bullets",
-    "layout_mode": "inline",
-    "insert_after": "summary",
-    "enabled": true,
-    "page_break_before": false,
-    "default_title": "市場異常重點",
-    "content": {
-      "items": [
-        "",
-        "",
-        ""
-      ]
-    }
-  },
-  {
-    "template_id": "tpl_0f1a6421",
-    "template_name": "新模板｜text",
-    "section_type": "table",
-    "layout_mode": "inline",
-    "insert_after": "appendix",
-    "enabled": true,
-    "page_break_before": false,
-    "default_title": "重大作業風險事件4",
-    "content": {
-      "columns": [
-        "項目",
-        "數值",
-        "狀態"
-      ],
-      "rows": [
-        [
-          [
-            "sdad"
-          ],
-          [
-            "100"
-          ],
-          [
-            "A"
-          ]
-        ]
-      ]
-    }
-  },
-  {
-    "template_id": "tpl_10dc8f35",
-    "template_name": "新模板｜text",
-    "section_type": "text",
-    "layout_mode": "inline",
-    "insert_after": "appendix",
-    "enabled": true,
-    "page_break_before": false,
-    "default_title": "重大作業風險事件",
-    "content": {
-      "text": "asdasdffs\nsadas\n4571"
-    }
-  },
-  {
     "template_id": "tpl_e0390bda",
     "template_name": "⚠ 授權額度使用率超限 / 警示",
     "section_type": "table",
@@ -115,6 +18,57 @@
         "狀態"
       ],
       "rows": []
+    }
+  },
+  {
+    "template_id": "tpl_dc0fc63d",
+    "template_name": "作業風險事件概況",
+    "section_type": "text",
+    "layout_mode": "inline",
+    "insert_after": "appendix",
+    "enabled": false,
+    "page_break_before": false,
+    "default_title": "作業風險事件",
+    "content": {
+      "text": "2026年2/1~3/2作業風險事件概況：\n∙ 重要事件：# 件(新報)、# 件(新報結案)。\n∙ 一般事件：# 件(續報)。\n∙ 影響金額 ：本公司新台幣1,893.6萬元。\n\n"
+    }
+  },
+  {
+    "template_id": "tpl_502cb6f5",
+    "template_name": "作業風險型態件數及影響金額",
+    "section_type": "table",
+    "layout_mode": "inline",
+    "insert_after": "appendix",
+    "enabled": false,
+    "page_break_before": false,
+    "default_title": "作業風險型態件數及影響金額",
+    "content": {
+      "columns": [
+        "事件型態",
+        "件數",
+        "影響金額(萬元)",
+        "實際損失金額(萬元)"
+      ],
+      "rows": [
+        [
+          "營運中斷與系統當機",
+          "1",
+          "443.1",
+          "0"
+        ],
+        [
+          "執行、運送及作業流程之管理",
+          "1",
+          "1,450.5",
+          "1,450.5"
+        ],
+        [
+          "總計(新發生事件)",
+          "2",
+          "1,893.6",
+          "1,450.5"
+        ]
+      ]
     }
   }
 ]

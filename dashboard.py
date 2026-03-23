@@ -495,12 +495,12 @@ if mode == "📅 單日報告":
     with tab1:
         c1, c2, c3 = st.columns(3)
         c1.metric("整體融資維持率", f"{b['total_maint']:.1f}%")
-        c2.metric("ABC合計", fmt_pct(b["abc_pct"]))
+        c2.metric("融資ABC合計占比", fmt_pct(b["abc_pct"]))
         c3.metric("融資餘額", fmt_wan(b["total_balance"]))
 
         c4, c5, c6 = st.columns(3)
         c4.metric("整體不限用途借款維持率", f"{b.get('unlim_total_maint',0):.1f}%" if b.get('unlim_total_maint') else "—")
-        c5.metric("不限用途 ABC合計", fmt_pct(b.get("unlim_abc_pct")) if b.get("unlim_abc_pct") else "—")
+        c5.metric("不限用途借款 ABC合計占比", fmt_pct(b.get("unlim_abc_pct")) if b.get("unlim_abc_pct") else "—")
         c6.metric("不限用途借款餘額", fmt_wan(b.get("unlim_total_balance", 0)) if b.get("unlim_total_balance") else "—")
 
         st.markdown("**融資 A~E 分佈**")
@@ -534,7 +534,7 @@ if mode == "📅 單日報告":
                 } for r in b["short_top5"]])
                 st.dataframe(s5_df, hide_index=True, use_container_width=True)
 
-        st.markdown("**不限用途借貸前5大客戶**")
+        st.markdown("**不限用途款項借貸前5大客戶**")
         if b["unlim_top5"]:
             u5_df = pd.DataFrame([{
                 "分公司": r.get("branch","—"),
@@ -1018,6 +1018,7 @@ elif mode == "🔔 超限事件清單":
     with col2:
         end_d = st.selectbox("結束日期", date_options, index=0)
     with col3:
+        # filter_type = st.selectbox("篩選類型", ["全部", "red（超限）", "yellow（警示）"])
         filter_type = st.selectbox("篩選類型", ["全部", "red（超限）", "yellow（警示）"])
 
     if start_d > end_d:
@@ -1051,7 +1052,7 @@ elif mode == "🔔 超限事件清單":
 # ════════════════════════════════════════════════════════════
 elif mode == "🔄 資料轉檔":
     st.subheader("🔄 資料轉檔")
-    st.markdown("執行 Excel → SQLite 資料轉換，等同於 `py main.py YYYYMMDD`。")
+    st.markdown("執行 Excel → SQLite 資料轉換。")
 
     sel_date = st.date_input("選擇資料日期", value=date.today())
     date_str = sel_date.strftime("%Y%m%d")
@@ -1114,7 +1115,7 @@ elif mode == "🔄 資料轉檔":
 # ════════════════════════════════════════════════════════════
 elif mode == "📄 產出報告":
     st.subheader("📄 產出 HTML 報告")
-    st.markdown("從資料庫讀取已轉好的資料，重新產出 HTML 報告。")
+    # st.markdown("從資料庫讀取已轉好的資料，重新產出 HTML 報告。")
 
     if not date_options:
         st.warning("資料庫尚無資料，請先執行「🔄 資料轉檔」。")
