@@ -19,6 +19,7 @@ import config
 
 import uuid
 import copy
+import streamlit.components.v1 as components
 from db import load_custom_sections, save_custom_section, delete_custom_section, copy_custom_sections
 from alert_logic import build_auto_alert_items, merge_alert_items, calc_signal_levels
 
@@ -1204,10 +1205,20 @@ elif mode == "🧩 報告區塊編輯器":
         st.warning("資料庫尚無資料，請先執行「🔄 資料轉檔」。")
         st.stop()
 
+    position_label_map = {
+        "summary": "總覽後",
+        "market": "自營後",
+        "wm": "財管後",
+        "broker": "經紀後",
+        "appendix": "附加區",
+    }
+
     sel_date = st.selectbox("選擇報告日期", date_options, key="custom_section_date")
     report_date_db = sel_date
 
-    st.markdown("### 快速操作")
+    # ⭐ 快速操作
+    st.markdown("### ⚡ 快速操作")
+
     available_copy_dates = [d for d in date_options if d != sel_date]
     if available_copy_dates:
         col_copy1, col_copy2 = st.columns([3, 1])
@@ -1228,29 +1239,29 @@ elif mode == "🧩 報告區塊編輯器":
     sections = load_custom_sections(config.DB_PATH, report_date_db)
 
     st.divider()
-    st.markdown("### 選擇既有區塊 / 新增區塊")
+    st.markdown("### 📚 選擇既有區塊 / 新增區塊")
 
     sec_map = {f"{s['display_order']}｜{s['title']}": s for s in sections}
-
-    selected_section_label = st.selectbox(
-        "選擇既有區塊",
-        ["(新增區塊)"] + list(sec_map.keys()),
-        key="edit_custom_section_select"
-    )
-
-    if selected_section_label != "(新增區塊)":
-        editing_section = sec_map[selected_section_label]
-    else:
-        editing_section = None
-
     templates = load_section_templates()
 
-    create_mode = st.radio(
-        "新增方式",
-        ["空白新增", "從模板新增"],
-        horizontal=True,
-        key="section_create_mode"
-    )
+    pick_col1, pick_col2 = st.columns([2.2, 1.2])
+
+    with pick_col1:
+        selected_section_label = st.selectbox(
+            "選擇既有區塊",
+            ["(新增區塊)"] + list(sec_map.keys()),
+            key="edit_custom_section_select"
+        )
+
+    with pick_col2:
+        create_mode = st.radio(
+            "新增方式",
+            ["空白新增", "從模板新增"],
+            horizontal=True,
+            key="section_create_mode"
+        )
+
+    editing_section = sec_map[selected_section_label] if selected_section_label != "(新增區塊)" else None
 
     selected_template = None
     if not editing_section and create_mode == "從模板新增":
@@ -1265,14 +1276,16 @@ elif mode == "🧩 報告區塊編輯器":
                 None
             )
         else:
-            st.info("目前尚無模板，請先建立 section_templates.json 或先從現有區塊另存模板。")
+            st.info("目前尚無模板")
 
     if editing_section:
-        st.info(f"目前正在編輯：{editing_section['display_order']}｜{editing_section['title']}（可儲存 / 刪除 / 另存模板）")
+        st.info(f"目前正在編輯：{editing_section['display_order']}｜{editing_section['title']}")
     else:
-        st.info("目前為新增區塊模式（可儲存 / 另存模板；刪除功能僅限既有區塊）")
+        st.info("目前為新增區塊模式")
 
-    st.markdown("### 既有區塊")
+    # ⭐ 區塊列表
+    st.markdown("### 📋 既有區塊列表")
+
     if sections:
         list_df = pd.DataFrame([
             {
@@ -1281,18 +1294,18 @@ elif mode == "🧩 報告區塊編輯器":
                 "類型": s["section_type"],
                 "標題": s["title"],
                 "新頁": s["page_break_before"],
-                "插入位置": s.get("insert_after", "appendix"),
-                "section_id": s["section_id"],
+                "插入位置": position_label_map.get(s.get("insert_after", "appendix"), "附加區"),
             }
             for s in sections
         ])
         st.dataframe(list_df, hide_index=True, use_container_width=True)
     else:
-        st.info("目前尚無自訂區塊。")
+        st.info("目前尚無區塊")
 
     st.divider()
-    st.markdown("### 新增 / 編輯區塊")
+    st.markdown("### ✏️ 新增 / 編輯區塊")
 
+    # ⭐ 預設值
     if editing_section:
         title_default = editing_section["title"]
         section_type_default = editing_section["section_type"]
@@ -1327,17 +1340,14 @@ elif mode == "🧩 報告區塊編輯器":
         section_id = str(uuid.uuid4())[:8]
         content_default = {}
 
-    basic_col1, basic_col2 = st.columns([2, 1])
+    # ⭐ 表單
+    title = st.text_input("區塊標題", value=title_default)
 
-    with basic_col1:
-        title = st.text_input("區塊標題", value=title_default)
+    enabled = st.checkbox("納入本次報告", value=enabled_default)
 
-    with basic_col2:
-        enabled = st.checkbox("納入本次報告", value=enabled_default)
+    col1, col2, col3 = st.columns(3)
 
-    setting_col1, setting_col2, setting_col3 = st.columns(3)
-
-    with setting_col1:
+    with col1:
         section_type_options = ["text", "bullets", "table"]
         section_type = st.selectbox(
             "區塊類型",
@@ -1345,7 +1355,7 @@ elif mode == "🧩 報告區塊編輯器":
             index=section_type_options.index(section_type_default)
         )
 
-    with setting_col2:
+    with col2:
         display_order = st.number_input(
             "顯示順序",
             min_value=1,
@@ -1353,7 +1363,7 @@ elif mode == "🧩 報告區塊編輯器":
             value=int(display_order_default)
         )
 
-    with setting_col3:
+    with col3:
         layout_mode_options = ["full_page", "inline"]
         layout_mode = st.selectbox(
             "版面模式",
@@ -1362,24 +1372,18 @@ elif mode == "🧩 報告區塊編輯器":
             format_func=lambda x: "獨立頁" if x == "full_page" else "接續顯示"
         )
 
-    setting_col4, setting_col5 = st.columns([2, 1])
+    col4, col5 = st.columns([2, 1])
 
-    with setting_col4:
+    with col4:
         insert_after_options = ["summary", "market", "wm", "broker", "appendix"]
         insert_after = st.selectbox(
             "插入位置",
             insert_after_options,
             index=insert_after_options.index(insert_after_default),
-            format_func=lambda x: {
-                "summary": "總覽後",
-                "market": "自營後",
-                "wm": "財管後",
-                "broker": "經紀後",
-                "appendix": "附加區"
-            }[x]
+            format_func=lambda x: position_label_map.get(x, x)
         )
 
-    with setting_col5:
+    with col5:
         page_break_before = st.checkbox(
             "此區塊前強制換頁",
             value=page_break_default
@@ -1391,8 +1395,7 @@ elif mode == "🧩 報告區塊編輯器":
         text_value = st.text_area(
             "內容",
             value=content_default.get("text", ""),
-            height=220,
-            placeholder="請輸入一般說明文字，可分段。"
+            height=260
         )
         content = {"text": text_value}
 
@@ -1401,84 +1404,44 @@ elif mode == "🧩 報告區塊編輯器":
         bullet_text = st.text_area(
             "條列內容（每行一點）",
             value=bullet_default,
-            height=180,
-            placeholder="黃金ETF Vega 使用率偏高\n白銀ETF 波動加劇\n建議提高盤中監控頻率"
+            height=220
         )
         items = [x.strip() for x in bullet_text.splitlines() if x.strip()]
         content = {"items": items}
 
     elif section_type == "table":
-        default_cols = content_default.get("columns", ["項目", "數值", "狀態"])
+        default_cols = content_default.get("columns", ["項目", "數值"])
         columns_text = st.text_input(
-            "欄位名稱（以逗號分隔）",
+            "欄位名稱（逗號分隔）",
             value=",".join(default_cols)
         )
         cols = [c.strip() for c in columns_text.split(",") if c.strip()]
-        if not cols:
-            cols = ["欄位1", "欄位2"]
 
         default_rows = content_default.get("rows", [])
-        if default_rows:
-            normalized_rows = []
-            for row in default_rows:
-                row_list = list(row)
-                if len(row_list) < len(cols):
-                    row_list += [""] * (len(cols) - len(row_list))
-                elif len(row_list) > len(cols):
-                    row_list = row_list[:len(cols)]
-                normalized_rows.append(row_list)
-            default_table_df = pd.DataFrame(normalized_rows, columns=cols)
-        else:
-            default_table_df = pd.DataFrame(columns=cols)
+        default_df = pd.DataFrame(default_rows, columns=cols) if cols else pd.DataFrame()
 
         table_df = st.data_editor(
-            default_table_df,
+            default_df,
             num_rows="dynamic",
-            use_container_width=True,
-            key="custom_table_editor"
+            use_container_width=True
         )
+
         content = {
             "columns": cols,
             "rows": table_df.fillna("").values.tolist()
         }
 
     st.divider()
-    st.markdown("### 區塊操作")
+    st.markdown("### ⚙️ 區塊操作")
 
-    op_col1, op_col2 = st.columns([2, 1])
+    template_name = st.text_input(
+        "另存模板名稱",
+        value=f"{title.strip() or '新模板'}｜{section_type}"
+    )
 
-    with op_col1:
-        save_as_template_name = st.text_input(
-            "另存模板名稱",
-            value=f"{title.strip() or '新模板'}｜{section_type}",
-            key="save_template_name"
-        )
+    col_btn1, col_btn2 = st.columns(2)
 
-    with op_col2:
-        st.write("")
-        if st.button("📌 另存為模板", use_container_width=True):
-            if not title.strip():
-                st.error("請先輸入區塊標題後再存成模板")
-            else:
-                templates = load_section_templates()
-                template_obj = {
-                    "template_id": f"tpl_{uuid.uuid4().hex[:8]}",
-                    "template_name": save_as_template_name.strip(),
-                    "section_type": section_type,
-                    "layout_mode": layout_mode,
-                    "insert_after": insert_after,
-                    "enabled": enabled,
-                    "page_break_before": page_break_before,
-                    "default_title": title.strip(),
-                    "content": content,
-                }
-                templates.append(template_obj)
-                save_section_templates(templates)
-                st.success("✅ 已另存為模板")
-
-    btn1, btn2 = st.columns(2)
-
-    with btn1:
+    with col_btn1:
         if st.button("💾 儲存區塊", type="primary", use_container_width=True):
             if not title.strip():
                 st.error("請輸入區塊標題")
@@ -1495,20 +1458,56 @@ elif mode == "🧩 報告區塊編輯器":
                     "insert_after": insert_after,
                 }
                 save_custom_section(config.DB_PATH, report_date_db, section)
-                if editing_section:
-                    st.success("✅ 已更新區塊")
-                else:
-                    st.success("✅ 已新增區塊")
+                st.success("✅ 已儲存")
                 st.rerun()
 
-    with btn2:
+    with col_btn2:
         if editing_section:
             if st.button("🗑 刪除此區塊", use_container_width=True):
                 delete_custom_section(config.DB_PATH, report_date_db, section_id)
-                st.success("✅ 已刪除目前區塊")
+                st.success("✅ 已刪除")
                 st.rerun()
         else:
             st.button("🗑 刪除此區塊", disabled=True, use_container_width=True)
+
+    if st.button("📌 另存為模板"):
+        templates = load_section_templates()
+        templates.append({
+            "template_id": f"tpl_{uuid.uuid4().hex[:8]}",
+            "template_name": template_name.strip(),
+            "section_type": section_type,
+            "layout_mode": layout_mode,
+            "insert_after": insert_after,
+            "enabled": enabled,
+            "page_break_before": page_break_before,
+            "default_title": title.strip(),
+            "content": content,
+        })
+        save_section_templates(templates)
+        st.success("✅ 已另存模板")
+
+    st.divider()
+    st.markdown("### 👁 預覽本日完整報告")
+
+    if st.button("預覽 HTML", use_container_width=True, key="preview_full_report_in_editor"):
+        from db import load_report, load_custom_sections
+        from render import generate_html
+
+        data = load_report(config.DB_PATH, report_date_db)
+        custom_sections = load_custom_sections(config.DB_PATH, report_date_db)
+
+        if not data:
+            st.error("找不到該日資料")
+        else:
+            try:
+                html = generate_html(data, custom_sections=custom_sections)
+                st.success("✅ 已產生完整報告預覽（僅預覽，未輸出檔案）")
+
+                with st.expander("展開完整 HTML 預覽", expanded=True):
+                    components.html(html, height=900, scrolling=True)
+
+            except Exception as e:
+                st.error(f"❌ 預覽失敗：{e}")
 # ════════════════════════════════════════════════════════════
 #  ✉️ 呈報信件
 # ════════════════════════════════════════════════════════════
